@@ -70,3 +70,4 @@ logs/
 *.pem
 secrets/
 
+lal-frontend/
