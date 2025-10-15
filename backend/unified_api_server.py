@@ -2,8 +2,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import aiohttp
 import asyncio
-from typing import Optional
+from typing import Optional, Dict
 import logging
+from datetime import datetime, timedelta
 
 logging.basicConfig(level=logging.INFO )
 logger = logging.getLogger(__name__)
@@ -17,6 +18,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 價格緩存（緩存 60 秒）
+price_cache: Dict[str, dict] = {}
+CACHE_DURATION = 60  # 秒
 
 @app.get("/")
 async def root():
@@ -37,7 +42,18 @@ async def health_check():
 
 @app.get("/api/v1/price/{token}")
 async def get_token_price(token: str):
-    """獲取代幣價格"""
+    """獲取代幣價格（帶緩存）"""
+    token = token.upper()
+    
+    # 檢查緩存
+    if token in price_cache:
+        cached_data = price_cache[token]
+        cache_time = datetime.fromtimestamp(cached_data["timestamp"])
+        if datetime.now() - cache_time < timedelta(seconds=CACHE_DURATION):
+            logger.info(f"📦 使用緩存價格: {token}")
+            return cached_data
+    
+    # 代幣映射
     token_map = {
         "BTC": "bitcoin",
         "ETH": "ethereum",
@@ -46,36 +62,60 @@ async def get_token_price(token: str):
         "USDT": "tether"
     }
     
-    token_id = token_map.get(token.upper())
+    token_id = token_map.get(token)
     if not token_id:
         raise HTTPException(status_code=404, detail=f"不支持的代幣: {token}")
     
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={token_id}&vs_currencies=usd"
+    # 批量獲取所有價格（減少 API 調用）
+    all_token_ids = ",".join(token_map.values())
+    url = f"https://api.coingecko.com/api/v3/simple/price?ids={all_token_ids}&vs_currencies=usd"
     
     try:
         async with aiohttp.ClientSession( ) as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=30 )) as response:
                 if response.status == 200:
                     data = await response.json()
-                    price = data.get(token_id, {}).get("usd")
                     
-                    if price:
-                        logger.info(f"✅ 成功獲取 {token} 價格: ${price}")
-                        return {
-                            "token": token.upper(),
-                            "price": price,
-                            "source": "CoinGecko",
-                            "timestamp": int(asyncio.get_event_loop().time())
-                        }
+                    # 緩存所有獲取的價格
+                    current_timestamp = int(datetime.now().timestamp())
+                    for symbol, coin_id in token_map.items():
+                        if coin_id in data and "usd" in data[coin_id]:
+                            price_cache[symbol] = {
+                                "token": symbol,
+                                "price": data[coin_id]["usd"],
+                                "source": "CoinGecko",
+                                "timestamp": current_timestamp
+                            }
+                    
+                    # 返回請求的代幣價格
+                    if token in price_cache:
+                        logger.info(f"✅ 成功獲取 {token} 價格: ${price_cache[token]['price']}")
+                        return price_cache[token]
                     else:
-                        logger.error(f"❌ 價格數據為空: {token}")
                         raise HTTPException(status_code=500, detail="價格數據為空")
+                        
+                elif response.status == 429:
+                    logger.error("⚠️ CoinGecko API 速率限制，使用緩存或模擬數據")
+                    # 返回模擬數據作為後備
+                    mock_prices = {
+                        "BTC": 111666,
+                        "ETH": 4085.45,
+                        "SOL": 202.53,
+                        "USDC": 1.0,
+                        "USDT": 1.0
+                    }
+                    return {
+                        "token": token,
+                        "price": mock_prices.get(token, 0),
+                        "source": "Mock Data (Rate Limited)",
+                        "timestamp": int(datetime.now().timestamp())
+                    }
                 else:
                     logger.error(f"❌ CoinGecko API 返回狀態碼: {response.status}")
                     raise HTTPException(status_code=500, detail=f"API 錯誤: {response.status}")
                     
     except asyncio.TimeoutError:
-        logger.error(f"⏱️ CoinGecko API 超時: {token}")
+        logger.error(f"⏱️ CoinGecko API 超時")
         raise HTTPException(status_code=504, detail="API 請求超時")
     except Exception as e:
         logger.error(f"❌ 獲取價格失敗: {e}")
@@ -117,6 +157,12 @@ async def search_lp_pools(min_tvl: float = 1000000, min_apy: float = 5.0, limit:
 @app.on_event("startup")
 async def startup_event():
     logger.info("🚀 LiveaLittle DeFi API started!")
+    # 預熱緩存
+    try:
+        await get_token_price("ETH")
+        logger.info("✅ 價格緩存預熱完成")
+    except:
+        logger.warning("⚠️ 價格緩存預熱失敗，將在首次請求時獲取")
 
 if __name__ == "__main__":
     import uvicorn
