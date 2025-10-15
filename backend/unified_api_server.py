@@ -26,20 +26,39 @@ app.add_middleware(
 
 
 @app.get("/")
-async def root():
-    """API 首頁"""
-    return {
-        "name": "LiveaLittle DeFi API",
-        "version": "1.0",
-        "status": "運行中 ✅",
-        "message": "歡迎使用 LiveaLittle DeFi API！",
-        "endpoints": {
-            "健康檢查": "/health",
-            "獲取代幣價格": "/api/v1/price/{token}",
-            "搜索 LP 池": "/api/v1/lp/search",
-            "數據質量狀態": "/api/v1/quality/status"
-        }
+async def fetch_coingecko_price(token: str) -> Optional[float]:
+    token_map = {
+        "BTC": "bitcoin",
+        "ETH": "ethereum",
+        "SOL": "solana",
+        "USDC": "usd-coin",
+        "USDT": "tether"
     }
+    
+    token_id = token_map.get(token.upper())
+    if not token_id:
+        return None
+    
+    url = f"https://api.coingecko.com/api/v3/simple/price?ids={token_id}&vs_currencies=usd"
+    
+    try:
+        async with aiohttp.ClientSession( ) as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30 )) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    price = data.get(token_id, {}).get("usd")
+                    if price:
+                        logger.info(f"✅ 成功獲取 {token} 價格: ${price}")
+                        return price
+                else:
+                    logger.error(f"❌ CoinGecko API 返回狀態碼: {response.status}")
+    except asyncio.TimeoutError:
+        logger.error(f"⏱️ CoinGecko API 超時: {token}")
+    except Exception as e:
+        logger.error(f"❌ CoinGecko API 錯誤: {e}")
+    
+    return None
+
 
 
 @app.get("/health")
