@@ -1,0 +1,22 @@
+{
+  "pure_lp": {
+    "total_return": NaN,
+    "annual_return": -1,
+    "volatility": NaN,
+    "sharpe_ratio": 0,
+    "max_drawdown": 0.0,
+    "win_rate": 0.0,
+    "final_capital": NaN,
+    "initial_capital": 10000
+  },
+  "delta_neutral": {
+    "total_return": NaN,
+    "annual_return": -1,
+    "volatility": NaN,
+    "sharpe_ratio": 0,
+    "max_drawdown": 0.0,
+    "win_rate": 0.0,
+    "final_capital": NaN,
+    "initial_capital": 10000
+  }
+}

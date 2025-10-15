@@ -1,0 +1,21 @@
+鏈,協議,代幣,總鎖倉量 (USD),總年化收益率 (%),基礎 APY (%),獎勵 APY (%)
+Base,aerodrome-slipstream,AVNT-USDC,$1.83M,73501.39%,20.05%,73481.34%
+Base,aerodrome-slipstream,USDC-VFY,$2.02M,63276.48%,7.35%,63269.13%
+Base,aerodrome-slipstream,WETH-USDC,$1.26M,32724.76%,171.57%,32553.18%
+Ethereum,pendle,HWHLP,$2.22M,8703.91%,8703.84%,0.07%
+Ethereum,uniswap-v3,WETH-ADO,$2.86M,1727.64%,1727.64%,nan%
+Base,aerodrome-slipstream,USDC-CBBTC,$6.45M,1524.84%,1514.37%,10.48%
+Linea,etherex-cl,USDT-WETH,$1.46M,1440.96%,0.00%,1440.96%
+Aptos,hyperion,APT-USDC,$11.89M,1129.88%,1128.67%,1.21%
+Aptos,hyperion,APT-TRUAPT,$8.05M,752.37%,752.37%,0.00%
+Base,aerodrome-slipstream,WETH-ZEN,$4.03M,652.32%,15.28%,637.04%
+Base,aerodrome-slipstream,BIO-AUBRAI,$1.07M,618.19%,15.97%,602.22%
+Linea,etherex-cl,USDC-WETH,$4.94M,520.82%,0.00%,520.82%
+Sonic,shadow-exchange-clmm,WS-USDC.E,$3.11M,519.09%,0.00%,519.09%
+Hyperliquid,spectra-v2,SW-HBUSDT,$1.29M,517.71%,517.71%,nan%
+Aptos,tortuga,TAPT,$1.04M,502.96%,nan%,nan%
+Solana,orca-dex,SOL-FARTCOIN,$3.41M,495.73%,495.73%,nan%
+Ethereum,uniswap-v3,WTAO-WETH,$1.47M,481.89%,481.89%,nan%
+Base,uniswap-v3,ZORA-WETH,$1.03M,355.38%,355.38%,nan%
+Base,aerodrome-slipstream,VIRTUAL-MAMO,$1.34M,354.99%,5.98%,349.02%
+Base,aerodrome-slipstream,AVNT-USDC,$1.09M,350.90%,219.45%,131.44%

@@ -1,0 +1,90 @@
+{
+  "request_id": "rebalance_1760493262",
+  "timestamp": "2025-10-14T21:54:22.359021",
+  "priority": "LOW",
+  "summary": {
+    "from_pool": "Uniswap V3 WETH-USDC",
+    "to_pool": "Raydium WSOL-USDC",
+    "from_apy": "120.0%",
+    "to_apy": "220.0%",
+    "apy_increase": "+100.0%",
+    "amount": "$5,000.00"
+  },
+  "financial_impact": {
+    "total_cost": "$100.00",
+    "benefit_30d": "$410.96",
+    "net_benefit_30d": "$310.96",
+    "payback_days": "7.3 天"
+  },
+  "execution_plan": {
+    "opportunity_id": "rebalance_1760493262",
+    "steps": [
+      {
+        "step": 1,
+        "action": "CLOSE_SHORT",
+        "description": "平倉 WETH 空頭倉位",
+        "amount": 2500.0,
+        "asset": "WETH",
+        "estimated_time": "1-2 分鐘"
+      },
+      {
+        "step": 2,
+        "action": "EXIT_LP",
+        "description": "退出 Uniswap V3 WETH-USDC LP 池",
+        "amount": 5000,
+        "pool": "Uniswap V3 WETH-USDC",
+        "estimated_time": "2-3 分鐘"
+      },
+      {
+        "step": 3,
+        "action": "ENTER_LP",
+        "description": "進入 Raydium WSOL-USDC LP 池",
+        "amount": 5000,
+        "pool": "Raydium WSOL-USDC",
+        "estimated_time": "2-3 分鐘"
+      },
+      {
+        "step": 4,
+        "action": "OPEN_SHORT",
+        "description": "開設 WSOL 空頭倉位",
+        "amount": 2500.0,
+        "asset": "WSOL",
+        "estimated_time": "1-2 分鐘"
+      }
+    ],
+    "total_estimated_time": "6-10 分鐘",
+    "delta_before": 2500.0,
+    "delta_after": 0,
+    "risk_level": "LOW",
+    "reversible": true
+  },
+  "risks": [
+    "價格滑點風險（已估算 1%）",
+    "Gas 費用波動風險",
+    "新池子的智能合約風險",
+    "轉倉期間的短暫 Delta 敞口"
+  ],
+  "recommendations": [
+    "⭐ 優質池子：戴維斯雙擊評分 > 90"
+  ],
+  "actions": {
+    "confirm": {
+      "label": "✅ 確認執行",
+      "color": "green",
+      "requires_2fa": false
+    },
+    "reject": {
+      "label": "❌ 拒絕",
+      "color": "red"
+    },
+    "defer": {
+      "label": "⏰ 稍後決定",
+      "color": "gray"
+    }
+  },
+  "auto_expire": {
+    "enabled": true,
+    "timeout": 3600,
+    "message": "此機會將在 1 小時後過期"
+  }
+}

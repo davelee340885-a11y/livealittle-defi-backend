@@ -1,0 +1,4 @@
+type,pool_info,value_usd,asset,timestamp
+LP,"{'symbol': 'WSOL-USDC', 'chain': 'Solana', 'project': 'raydium-amm', 'apy': 222.59}",3333.3333333333335,WSOL-USDC,2025-10-14 21:04:15.078130
+LP,"{'symbol': 'WETH-USDC', 'chain': 'Arbitrum', 'project': 'uniswap-v3', 'apy': 116.94}",3333.3333333333335,WETH-USDC,2025-10-14 21:04:15.078148
+LP,"{'symbol': 'WAVAX-USDC', 'chain': 'Avalanche', 'project': 'joe-v2.1', 'apy': 317.03}",3333.3333333333335,WAVAX-USDC,2025-10-14 21:04:15.078153

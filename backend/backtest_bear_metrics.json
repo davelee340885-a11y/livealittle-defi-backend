@@ -1,0 +1,32 @@
+{
+  "pure_lp": {
+    "total_return": 0.4402536957765726,
+    "annual_return": 0.43739314893244896,
+    "volatility": 0.0688266106376963,
+    "sharpe_ratio": 5.628537354130206,
+    "max_drawdown": -0.06940139545054058,
+    "win_rate": 0.6348773841961853,
+    "final_capital": 14402.536957765726,
+    "initial_capital": 10000
+  },
+  "delta_neutral": {
+    "total_return": 2.324267070905002,
+    "annual_return": 2.302576438294007,
+    "volatility": 0.01680309452076713,
+    "sharpe_ratio": 134.05723782068972,
+    "max_drawdown": 0.0,
+    "win_rate": 0.997275204359673,
+    "final_capital": 33242.67070905002,
+    "initial_capital": 10000
+  },
+  "dynamic": {
+    "total_return": 1.8753641880243581,
+    "annual_return": 1.8588618600547528,
+    "volatility": 0.017971225185001456,
+    "sharpe_ratio": 100.65322989577832,
+    "max_drawdown": 0.0,
+    "win_rate": 0.997275204359673,
+    "final_capital": 28753.64188024358,
+    "initial_capital": 10000
+  }
+}

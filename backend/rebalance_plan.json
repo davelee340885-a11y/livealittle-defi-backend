@@ -1,0 +1,48 @@
+{
+  "timestamp": "2025-10-14T21:23:45.086931",
+  "total_positions": 3,
+  "rebalance_actions": [
+    {
+      "action": "REBALANCE",
+      "from_pool": "WSOL-USDC (Solana)",
+      "to_pool": "HYPE-USDC (Arbitrum)",
+      "position_size": 3333.33,
+      "apy_from": 222.59,
+      "apy_to": 450.0,
+      "apy_improvement": 227.41,
+      "cost": 83.33330000000001,
+      "net_benefit_30d": 539.707172849315,
+      "payback_days": 4.012578811400324,
+      "priority": "MEDIUM"
+    },
+    {
+      "action": "REBALANCE",
+      "from_pool": "WETH-USDC (Arbitrum)",
+      "to_pool": "HYPE-USDC (Arbitrum)",
+      "position_size": 3333.33,
+      "apy_from": 116.94,
+      "apy_to": 450.0,
+      "apy_improvement": 333.06,
+      "cost": 83.33330000000001,
+      "net_benefit_30d": 829.1589381917809,
+      "payback_days": 2.739748236055208,
+      "priority": "HIGH"
+    },
+    {
+      "action": "REBALANCE",
+      "from_pool": "WAVAX-USDC (Avalanche)",
+      "to_pool": "HYPE-USDC (Arbitrum)",
+      "position_size": 3333.33,
+      "apy_from": 317.03,
+      "apy_to": 450.0,
+      "apy_improvement": 132.97000000000003,
+      "cost": 83.33330000000001,
+      "net_benefit_30d": 280.96770556164404,
+      "payback_days": 6.862454294205817,
+      "priority": "MEDIUM"
+    }
+  ],
+  "hold_actions": [],
+  "total_expected_benefit": 1649.8338166027397,
+  "total_cost": 249.99990000000003
+}

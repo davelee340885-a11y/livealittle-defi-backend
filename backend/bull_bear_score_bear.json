@@ -1,0 +1,51 @@
+{
+  "timestamp": "2025-10-14T21:19:12.319113",
+  "scenario": "bear",
+  "total_score": 47.0,
+  "regime": "SIDEWAYS",
+  "regime_cn": "橫盤/中性 ↔️",
+  "recommendation": "建議：Delta Neutral 策略，對沖比例 100%，專注賺取手續費",
+  "risk_level": "低",
+  "scores": {
+    "ma_cross_50_200": 15,
+    "ma_200w": 25,
+    "pi_cycle": 60,
+    "mvrv_zscore": 85,
+    "sopr": 30,
+    "exchange_netflow": 20,
+    "fear_greed": 80,
+    "funding_rate": 40,
+    "btc_dominance": 65,
+    "market_cap_trend": 20
+  },
+  "contributions": {
+    "ma_cross_50_200": 2.25,
+    "ma_200w": 3.75,
+    "pi_cycle": 6.0,
+    "mvrv_zscore": 12.75,
+    "sopr": 3.0,
+    "exchange_netflow": 1.0,
+    "fear_greed": 12.0,
+    "funding_rate": 2.0,
+    "btc_dominance": 3.25,
+    "market_cap_trend": 1.0
+  },
+  "categories": {
+    "技術指標": {
+      "total_weight": 0.4,
+      "weighted_score": 12.0
+    },
+    "鏈上指標": {
+      "total_weight": 0.3,
+      "weighted_score": 16.75
+    },
+    "情緒指標": {
+      "total_weight": 0.2,
+      "weighted_score": 14.0
+    },
+    "宏觀指標": {
+      "total_weight": 0.1,
+      "weighted_score": 4.25
+    }
+  }
+}

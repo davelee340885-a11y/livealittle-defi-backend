@@ -1,0 +1,20 @@
+{
+  "pure_lp": {
+    "total_return": 0.8255844050561049,
+    "annual_return": 0.8225846331645483,
+    "volatility": 0.21737521126422157,
+    "sharpe_ratio": 3.5541524200082986,
+    "max_drawdown": -0.16666226964763464,
+    "win_rate": 0.6502732240437158,
+    "final_capital": 18255.84405056105
+  },
+  "delta_neutral": {
+    "total_return": 1.7438254734388556,
+    "annual_return": 1.7362689886648175,
+    "volatility": 0.0027653924644517073,
+    "sharpe_ratio": 609.7756504153753,
+    "max_drawdown": 0.0,
+    "win_rate": 0.9972677595628415,
+    "final_capital": 27438.254734388556
+  }
+}

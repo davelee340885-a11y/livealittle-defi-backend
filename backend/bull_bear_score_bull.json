@@ -1,0 +1,51 @@
+{
+  "timestamp": "2025-10-14T21:19:12.318574",
+  "scenario": "bull",
+  "total_score": 72.0,
+  "regime": "BULL",
+  "regime_cn": "牛市 📈",
+  "recommendation": "建議：Long Bias 策略，對沖比例 30-50%，平衡收益與風險",
+  "risk_level": "中低",
+  "scores": {
+    "ma_cross_50_200": 85,
+    "ma_200w": 75,
+    "pi_cycle": 70,
+    "mvrv_zscore": 65,
+    "sopr": 70,
+    "exchange_netflow": 80,
+    "fear_greed": 70,
+    "funding_rate": 60,
+    "btc_dominance": 55,
+    "market_cap_trend": 80
+  },
+  "contributions": {
+    "ma_cross_50_200": 12.75,
+    "ma_200w": 11.25,
+    "pi_cycle": 7.0,
+    "mvrv_zscore": 9.75,
+    "sopr": 7.0,
+    "exchange_netflow": 4.0,
+    "fear_greed": 10.5,
+    "funding_rate": 3.0,
+    "btc_dominance": 2.75,
+    "market_cap_trend": 4.0
+  },
+  "categories": {
+    "技術指標": {
+      "total_weight": 0.4,
+      "weighted_score": 31.0
+    },
+    "鏈上指標": {
+      "total_weight": 0.3,
+      "weighted_score": 20.75
+    },
+    "情緒指標": {
+      "total_weight": 0.2,
+      "weighted_score": 13.5
+    },
+    "宏觀指標": {
+      "total_weight": 0.1,
+      "weighted_score": 6.75
+    }
+  }
+}
