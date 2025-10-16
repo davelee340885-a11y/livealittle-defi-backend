@@ -192,7 +192,7 @@ class LALSmartSearchV3:
             token_a, token_b = tokens[0], tokens[1]
             
             # IL 分析
-            il_analysis = self.il_calculator.analyze_il(
+            il_analysis = self.il_calculator.analyze_il_with_hedge(
                 token_a=token_a,
                 token_b=token_b,
                 capital=capital,

@@ -13,7 +13,7 @@ import os
 # 導入 LAL 智能搜尋 V3 和篩選器
 from lal_smart_search_v3 import LALSmartSearchV3
 from lp_filter import LPFilter, FilterCriteria
-from il_calculator import HedgeParams
+from il_calculator_compat import HedgeParams
 
 # 創建 FastAPI 應用
 app = FastAPI(

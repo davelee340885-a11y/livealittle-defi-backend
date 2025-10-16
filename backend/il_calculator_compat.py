@@ -6,7 +6,7 @@ IL Calculator 兼容層
 
 from typing import Dict, Tuple
 from dataclasses import dataclass
-from backend.il_calculator import DeltaNeutralCalculator
+from il_calculator import DeltaNeutralCalculator
 
 
 @dataclass
