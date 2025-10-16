@@ -11,7 +11,8 @@ import requests
 from davis_double_click_analyzer import DavisDoubleClickAnalyzer
 from unified_data_aggregator import UnifiedDataAggregator
 from delta_neutral_calculator import DeltaNeutralCalculator
-from il_calculator_compat import ILCalculator, HedgeParams
+from il_calculator_v2 import ILCalculatorV2, HedgeParamsV2
+from pool_parser import PoolParser
 
 
 class GasFeeEstimator:
@@ -111,7 +112,8 @@ class LALSmartSearchV3:
         self.data_aggregator = UnifiedDataAggregator()
         self.dn_calculator = DeltaNeutralCalculator()
         self.gas_estimator = GasFeeEstimator()
-        self.il_calculator = ILCalculator()  # 新增
+        self.il_calculator = ILCalculatorV2()  # V2 計算器
+        self.pool_parser = PoolParser()  # 池解析器
     
     def search(
         self,
@@ -121,7 +123,7 @@ class LALSmartSearchV3:
         min_tvl: float = 5_000_000,
         min_apy: float = 5.0,
         top_n: int = 5,
-        hedge_params: HedgeParams = None  # 新增
+        hedge_params: HedgeParamsV2 = None  # V2 對冲參數
     ) -> List[Dict]:
         """
         智能搜尋最佳 Delta Neutral 方案（考慮 IL）
@@ -139,7 +141,7 @@ class LALSmartSearchV3:
             最佳方案列表
         """
         if hedge_params is None:
-            hedge_params = HedgeParams(hedge_ratio=1.0, rebalance_frequency_days=7)
+            hedge_params = HedgeParamsV2(hedge_ratio=1.0, rebalance_frequency_days=7)
         
         print(f"\n{'='*80}")
         print(f"🔍 LAL 智能搜尋服務 V3（整合 IL 計算）")
@@ -184,48 +186,85 @@ class LALSmartSearchV3:
         opportunities = []
         
         for pool in davis_results:
-            # 解析池中的代幣
-            tokens = pool["symbol"].split("-")
-            if len(tokens) != 2:
-                continue
-            
-            token_a, token_b = tokens[0], tokens[1]
-            
-            # IL 分析
-            il_analysis = self.il_calculator.analyze_il_with_hedge(
-                token_a=token_a,
-                token_b=token_b,
-                capital=capital,
-                hedge_params=hedge_params
-            )
-            
-            # 計算總收益
-            lp_apy = pool["apy"]
-            total_apy = lp_apy + funding_apy
-            
-            # 估算 Gas 成本
-            eth_price = self.data_aggregator.get_token_price(token)
-            if eth_price:
-                gas_cost = self.gas_estimator.estimate_total_gas_cost(
-                    chain=pool["chain"],
-                    eth_price=eth_price["price"]
+            try:
+                # 使用池解析器解析池配置
+                pool_info = self.pool_parser.parse_pool(
+                    symbol=pool["symbol"],
+                    protocol=pool["protocol"],
+                    pool_data=pool.get("metadata", {})
                 )
-                annual_gas_cost = gas_cost["annual_cost_usd"]
-            else:
-                annual_gas_cost = 200  # 默認值
-            
-            # 計算調整後的淨收益（考慮 IL）
-            profit_result = self.il_calculator.calculate_adjusted_net_profit(
-                lp_apy=lp_apy,
-                funding_apy=funding_apy,
-                net_il_annual=il_analysis.net_il_annual,
-                gas_cost_annual=annual_gas_cost,
-                capital=capital
-            )
+                
+                token_a = pool_info.token_a
+                token_b = pool_info.token_b
+                
+                # 如果沒有價格範圍,估算一個
+                if not pool_info.price_lower and pool_info.current_price:
+                    pool_info.price_lower, pool_info.price_upper = self.pool_parser.estimate_price_range(
+                        pool_info.current_price,
+                        range_pct=10.0
+                    )
+                
+                # 獲取雙幣種資金費率
+                funding_rates = self.data_aggregator.get_multiple_funding_rates([token_a, token_b])
+                funding_rate_a_apy = funding_rates.get(token_a, {}).get("annualized_rate_pct", 0.0)
+                funding_rate_b_apy = funding_rates.get(token_b, {}).get("annualized_rate_pct", 0.0)
+                
+                # 計算總收益
+                lp_apy = pool["apy"]
+                
+                # 估算 Gas 成本
+                eth_price = self.data_aggregator.get_token_price(token)
+                if eth_price:
+                    gas_cost = self.gas_estimator.estimate_total_gas_cost(
+                        chain=pool["chain"],
+                        eth_price=eth_price["price"]
+                    )
+                    annual_gas_cost = gas_cost["annual_cost_usd"]
+                else:
+                    annual_gas_cost = 200  # 默認值
+                
+                # 創建 V2 對冲參數
+                hedge_params_v2 = HedgeParamsV2(
+                    hedge_ratio=hedge_params.hedge_ratio,
+                    rebalance_frequency_days=hedge_params.rebalance_frequency_days,
+                    weight_a=pool_info.weight_a,
+                    weight_b=pool_info.weight_b,
+                    current_price=pool_info.current_price,
+                    price_lower=pool_info.price_lower,
+                    price_upper=pool_info.price_upper
+                )
+                
+                # IL 分析 (V2)
+                il_analysis = self.il_calculator.analyze_il_with_hedge(
+                    token_a=token_a,
+                    token_b=token_b,
+                    capital=capital,
+                    hedge_params=hedge_params_v2
+                )
+                
+                # 計算調整後的淨收益 (V2)
+                profit_result = self.il_calculator.calculate_adjusted_net_profit(
+                    token_a=token_a,
+                    token_b=token_b,
+                    lp_apy=lp_apy,
+                    funding_rate_a_apy=funding_rate_a_apy,
+                    funding_rate_b_apy=funding_rate_b_apy,
+                    gas_cost_annual=annual_gas_cost,
+                    capital=capital,
+                    hedge_params=hedge_params_v2
+                )
+                
+            except Exception as e:
+                print(f"⚠️  處理池 {pool['symbol']} 時發生錯誤: {e}")
+                continue
             
             # ROI
             total_cost = annual_gas_cost + abs(il_analysis.il_impact_usd)
             roi = (profit_result["total_profit"] / total_cost) * 100 if total_cost > 0 else 0
+            
+            # 計算總 APY (雙幣種資金費率)
+            total_funding_apy = funding_rate_a_apy + funding_rate_b_apy
+            total_apy = lp_apy - total_funding_apy
             
             opportunities.append({
                 "pool_id": pool["pool_id"],
@@ -234,13 +273,25 @@ class LALSmartSearchV3:
                 "symbol": pool["symbol"],
                 "tvl": pool["tvl"],
                 "lp_apy": lp_apy,
-                "funding_apy": funding_apy,
+                
+                # V2: 雙幣種資金費率
+                "funding_rate_a_apy": funding_rate_a_apy,
+                "funding_rate_b_apy": funding_rate_b_apy,
+                "total_funding_apy": total_funding_apy,
                 "total_apy": total_apy,
                 
-                # 資金費率統計（新增）
-                "funding_rate_stats": funding_rate_stats if funding_rate_stats else None,
+                # V2: 池配置
+                "pool_type": profit_result.get("pool_type", "unknown"),
+                "weight_a": pool_info.weight_a,
+                "weight_b": pool_info.weight_b,
                 
-                # IL 分析（新增）
+                # V2: Delta 資訊
+                "delta_a": profit_result.get("delta_a", 0),
+                "delta_b": profit_result.get("delta_b", 0),
+                "hedge_amount_a_usd": profit_result.get("hedge_amount_a_usd", 0),
+                "hedge_amount_b_usd": profit_result.get("hedge_amount_b_usd", 0),
+                
+                # IL 分析（V2 增強）
                 "il_analysis": {
                     "pool_volatility": il_analysis.pool_volatility,
                     "expected_il_annual": il_analysis.expected_il_annual,
@@ -249,7 +300,12 @@ class LALSmartSearchV3:
                     "il_impact_usd": il_analysis.il_impact_usd,
                     "il_risk_level": il_analysis.il_risk_level,
                     "volatility_level": il_analysis.volatility_level,
-                    "hedge_quality": il_analysis.hedge_quality
+                    "hedge_quality": il_analysis.hedge_quality,
+                    # V2 新增
+                    "pool_type": il_analysis.pool_type,
+                    "delta_a": il_analysis.delta_a,
+                    "delta_b": il_analysis.delta_b,
+                    "correlation_risk": il_analysis.correlation_risk
                 },
                 
                 # 成本
@@ -259,14 +315,21 @@ class LALSmartSearchV3:
                 "adjusted_net_apy": profit_result["net_apy"],
                 "adjusted_net_profit": profit_result["total_profit"],
                 
-                # 收益分解
+                # 收益分解 (V2 增強)
                 "profit_breakdown": {
                     "lp_profit": profit_result["lp_profit"],
+                    "funding_cost_a": profit_result.get("funding_cost_a", 0),
+                    "funding_cost_b": profit_result.get("funding_cost_b", 0),
                     "funding_cost": profit_result["funding_cost"],
                     "il_loss": profit_result["il_loss"],
                     "gas_cost": profit_result["gas_cost"],
                     "total": profit_result["total_profit"]
                 },
+                
+                # V2: 風險評估
+                "volatility_exposure": profit_result.get("volatility_exposure", 0),
+                "correlation_risk": profit_result.get("correlation_risk", 0),
+                "risk_level": profit_result.get("risk_level", "unknown"),
                 
                 # 其他指標
                 "roi": roi,
@@ -343,7 +406,9 @@ class LALSmartSearchV3:
             
             print("收益分析:")
             print(f"  LP APY: {opp['lp_apy']:.2f}%")
-            print(f"  資金費率 APY: {opp['funding_apy']:.2f}%")
+            print(f"  資金費率 A APY: {opp.get('funding_rate_a_apy', 0):.2f}%")
+            print(f"  資金費率 B APY: {opp.get('funding_rate_b_apy', 0):.2f}%")
+            print(f"  總資金費率 APY: {opp.get('total_funding_apy', 0):.2f}%")
             print(f"  總 APY: {opp['total_apy']:.2f}%")
             print(f"  ✅ 調整後淨 APY: {opp['adjusted_net_apy']:.2f}%")
             print()
