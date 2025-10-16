@@ -13,6 +13,7 @@ from unified_data_aggregator import UnifiedDataAggregator
 from delta_neutral_calculator import DeltaNeutralCalculator
 from il_calculator_v2 import ILCalculatorV2, HedgeParamsV2
 from pool_parser import PoolParser
+from pool_url_generator import generate_pool_url
 
 
 class GasFeeEstimator:
@@ -266,11 +267,20 @@ class LALSmartSearchV3:
             total_funding_apy = funding_rate_a_apy + funding_rate_b_apy
             total_apy = lp_apy - total_funding_apy
             
+            # 生成外部連結
+            external_url = generate_pool_url(
+                pool_id=pool["pool_id"],
+                protocol=pool["protocol"],
+                chain=pool["chain"],
+                symbol=pool["symbol"]
+            )
+            
             opportunities.append({
                 "pool_id": pool["pool_id"],
                 "protocol": pool["protocol"],
                 "chain": pool["chain"],
                 "symbol": pool["symbol"],
+                "external_url": external_url,
                 "tvl": pool["tvl"],
                 "lp_apy": lp_apy,
                 
