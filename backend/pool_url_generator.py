@@ -19,6 +19,11 @@ def generate_pool_url(pool_id: str, protocol: str, chain: str, symbol: str = "")
     protocol_lower = protocol.lower()
     chain_lower = chain.lower()
     
+    # 優先策略: 如果 pool_id 不是地址格式 (0x開頭),
+    # 使用 DefiLlama 的池頁面,因為它有完整的數據和操作連結
+    if pool_id and not pool_id.startswith('0x'):
+        return f"https://defillama.com/yields/pool/{pool_id}"
+    
     # Uniswap V3
     if 'uniswap' in protocol_lower and 'v3' in protocol_lower:
         chain_map = {
