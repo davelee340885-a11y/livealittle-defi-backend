@@ -173,8 +173,10 @@ class LALSmartSearchV3:
         if not funding_rate_data:
             print("⚠️  無法獲取資金費率，使用默認值")
             funding_apy = 10.0
+            funding_rate_stats = None
         else:
             funding_apy = funding_rate_data["annualized_rate_pct"]
+            funding_rate_stats = funding_rate_data  # 保存完整的統計數據
             print(f"✅ {token} 資金費率: {funding_apy:.2f}% (年化)\n")
         
         # 步驟 3: IL 分析（新增）
@@ -234,6 +236,9 @@ class LALSmartSearchV3:
                 "lp_apy": lp_apy,
                 "funding_apy": funding_apy,
                 "total_apy": total_apy,
+                
+                # 資金費率統計（新增）
+                "funding_rate_stats": funding_rate_stats if funding_rate_stats else None,
                 
                 # IL 分析（新增）
                 "il_analysis": {

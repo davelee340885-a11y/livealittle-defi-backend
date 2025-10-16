@@ -251,8 +251,8 @@ class UnifiedDataAggregator:
             return cached
         
         # 從 Hyperliquid 獲取最近的資金費率
-        # 獲取最近 3 天的數據用於計算平均值
-        start_time = int((datetime.now() - timedelta(days=3)).timestamp() * 1000)
+        # 獲取最近 30 天的數據用於計算統計值
+        start_time = int((datetime.now() - timedelta(days=30)).timestamp() * 1000)
         
         payload = {
             "type": "fundingHistory",
@@ -279,22 +279,59 @@ class UnifiedDataAggregator:
             print(f"❌ 無法獲取 {coin} 資金費率")
             return None
         
-        # 計算平均資金費率（最近的數據）
-        recent_rates = [float(item["fundingRate"]) for item in data[-20:]]  # 最近 20 筆
-        avg_rate = sum(recent_rates) / len(recent_rates)
-        current_rate = float(data[-1]["fundingRate"])  # 最新的費率
+        # 提取所有費率數據
+        all_rates = [float(item["fundingRate"]) for item in data]
+        current_rate = all_rates[-1]  # 最新的費率
         
-        # Hyperliquid 每小時結算一次，所以年化公式不同
-        # 年化資金費率（每天24次結算）
-        annualized_rate = avg_rate * 24 * 365 * 100  # 轉換為百分比
+        # 計算不同時間段的平均值
+        # Hyperliquid 每小時結算一次，24小時 = 24筆數據
+        rates_7d = all_rates[-168:] if len(all_rates) >= 168 else all_rates  # 7天 = 168小時
+        rates_30d = all_rates  # 所有數據（最多30天）
+        
+        avg_rate_7d = sum(rates_7d) / len(rates_7d) if rates_7d else 0
+        avg_rate_30d = sum(rates_30d) / len(rates_30d) if rates_30d else 0
+        
+        # 計算標準差（波動性）
+        import statistics
+        std_dev_7d = statistics.stdev(rates_7d) if len(rates_7d) > 1 else 0
+        std_dev_30d = statistics.stdev(rates_30d) if len(rates_30d) > 1 else 0
+        
+        # 計算最高/最低值
+        max_rate_7d = max(rates_7d) if rates_7d else 0
+        min_rate_7d = min(rates_7d) if rates_7d else 0
+        max_rate_30d = max(rates_30d) if rates_30d else 0
+        min_rate_30d = min(rates_30d) if rates_30d else 0
+        
+        # Hyperliquid 每小時結算一次，所以年化公式：每小時費率 * 24 * 365
+        annualized_rate_7d = avg_rate_7d * 24 * 365 * 100  # 轉換為百分比
+        annualized_rate_30d = avg_rate_30d * 24 * 365 * 100
         
         funding_data = {
             "coin": coin.upper(),
             "current_rate": current_rate,
             "current_rate_pct": current_rate * 100,
-            "avg_rate": avg_rate,
-            "avg_rate_pct": avg_rate * 100,
-            "annualized_rate_pct": annualized_rate,
+            
+            # 7 天統計
+            "avg_rate_7d": avg_rate_7d,
+            "avg_rate_7d_pct": avg_rate_7d * 100,
+            "annualized_rate_7d_pct": annualized_rate_7d,
+            "std_dev_7d_pct": std_dev_7d * 100,
+            "max_rate_7d_pct": max_rate_7d * 100,
+            "min_rate_7d_pct": min_rate_7d * 100,
+            
+            # 30 天統計
+            "avg_rate_30d": avg_rate_30d,
+            "avg_rate_30d_pct": avg_rate_30d * 100,
+            "annualized_rate_30d_pct": annualized_rate_30d,
+            "std_dev_30d_pct": std_dev_30d * 100,
+            "max_rate_30d_pct": max_rate_30d * 100,
+            "min_rate_30d_pct": min_rate_30d * 100,
+            
+            # 向後兼容（使用 7 天平均作為默認值）
+            "avg_rate": avg_rate_7d,
+            "avg_rate_pct": avg_rate_7d * 100,
+            "annualized_rate_pct": annualized_rate_7d,
+            
             "funding_time": datetime.fromtimestamp(data[-1]["time"] / 1000).isoformat(),
             "updated_at": datetime.now().isoformat(),
             "source": "Hyperliquid",
@@ -304,7 +341,7 @@ class UnifiedDataAggregator:
         # 緩存結果
         self.cache.set(cache_key, funding_data, self.CACHE_DURATION["funding_rates"])
         
-        print(f"✅ {coin} 資金費率: {funding_data['current_rate_pct']:.4f}% (年化: {annualized_rate:.2f}%)")
+        print(f"✅ {coin} 資金費率: {funding_data['current_rate_pct']:.4f}% (7日年化: {annualized_rate_7d:.2f}%, 範圍: {min_rate_7d*100:.4f}%-{max_rate_7d*100:.4f}%)")
         return funding_data
     
     def get_multiple_funding_rates(self, coins: List[str]) -> Dict[str, Dict]:
