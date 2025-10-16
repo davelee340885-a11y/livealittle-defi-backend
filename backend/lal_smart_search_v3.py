@@ -272,7 +272,8 @@ class LALSmartSearchV3:
                 pool_id=pool["pool_id"],
                 protocol=pool["protocol"],
                 chain=pool["chain"],
-                symbol=pool["symbol"]
+                symbol=pool["symbol"],
+                pool_address=pool.get("pool_address", "")  # 傳遞實際的池地址
             )
             
             opportunities.append({

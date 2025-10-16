@@ -126,6 +126,14 @@ class UnifiedDataAggregator:
                 if apy <= 0 or apy > 10000:  # 過濾異常 APY
                     continue
                 
+                # 提取池地址 (poolMeta 通常包含實際的池地址)
+                pool_meta = pool.get("poolMeta", "")
+                pool_address = ""
+                if pool_meta and isinstance(pool_meta, str):
+                    # poolMeta 可能是地址或其他格式
+                    if pool_meta.startswith("0x") and len(pool_meta) == 42:
+                        pool_address = pool_meta
+                
                 pools.append({
                     "pool_id": pool.get("pool", ""),
                     "protocol": pool.get("project", ""),
@@ -137,7 +145,8 @@ class UnifiedDataAggregator:
                     "apy_reward": float(pool.get("apyReward", 0)),
                     "il_risk": pool.get("ilRisk", "unknown"),
                     "exposure": pool.get("exposure", ""),
-                    "pool_meta": pool.get("poolMeta", ""),
+                    "pool_meta": pool_meta,
+                    "pool_address": pool_address,  # 新增: 實際的池地址
                 })
                 
                 if len(pools) >= limit:
