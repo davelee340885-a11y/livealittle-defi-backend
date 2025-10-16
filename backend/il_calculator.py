@@ -153,7 +153,7 @@ class ILCalculator:
         """
         基於年化波動率估算預期 IL
         
-        使用簡化模型: 預期 IL ≈ -0.5 * volatility^2
+        使用正確的 IL 公式，假設價格可能變動 ±2σ (約95% 置信區間)
         
         Args:
             volatility_annual: 年化波動率 (%)
@@ -165,8 +165,24 @@ class ILCalculator:
         # 將年化波動率轉換為持有期波動率
         holding_volatility = volatility_annual * math.sqrt(holding_period_days / 365)
         
-        # 使用簡化模型
-        expected_il = -0.5 * (holding_volatility / 100) ** 2 * 100
+        # 假設價格可能變動範圍：±2σ (約95% 置信區間)
+        # 這意味著價格可能上漲或下跌 2 * volatility
+        price_change_2sigma = 2 * holding_volatility
+        
+        # 計算價格上漲的 IL
+        price_ratio_up = 1 + (price_change_2sigma / 100)
+        il_up = (2 * math.sqrt(price_ratio_up) / (1 + price_ratio_up)) - 1
+        
+        # 計算價格下跌的 IL
+        price_ratio_down = 1 - (price_change_2sigma / 100)
+        if price_ratio_down <= 0:
+            # 價格下跌超過 100%，使用極限值
+            il_down = -1.0
+        else:
+            il_down = (2 * math.sqrt(price_ratio_down) / (1 + price_ratio_down)) - 1
+        
+        # 取最壞情況（絕對值最大的損失）
+        expected_il = min(il_up, il_down) * 100  # 轉換為百分比
         
         return expected_il
     
