@@ -13,7 +13,7 @@ import os
 # 導入 LAL 智能搜尋 V3 和篩選器
 from lal_smart_search_v3 import LALSmartSearchV3
 from lp_filter import LPFilter, FilterCriteria
-from il_calculator_compat import HedgeParams
+from il_calculator_v2 import HedgeParamsV2
 
 # 創建 FastAPI 應用
 app = FastAPI(
@@ -191,7 +191,7 @@ async def smart_search(
     """
     try:
         # 創建對沖參數
-        hedge_params = HedgeParams(
+        hedge_params = HedgeParamsV2(
             hedge_ratio=hedge_ratio,
             rebalance_frequency_days=rebalance_frequency_days
         )
@@ -264,7 +264,7 @@ async def smart_search_post(request: SearchRequest):
     """
     try:
         # 創建對沖參數
-        hedge_params = HedgeParams(
+        hedge_params = HedgeParamsV2(
             hedge_ratio=request.hedge_ratio,
             rebalance_frequency_days=request.rebalance_frequency_days
         )
