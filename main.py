@@ -1,4 +1,7 @@
-from backend.lal_api_server_deploy import app
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+from lal_api_server_deploy import app
 import uvicorn
 import os
 
