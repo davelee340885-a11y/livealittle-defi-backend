@@ -13,7 +13,7 @@ from unified_data_aggregator import UnifiedDataAggregator
 from delta_neutral_calculator import DeltaNeutralCalculator
 from il_calculator_v2 import ILCalculatorV2, HedgeParamsV2
 from pool_parser import PoolParser
-from pool_url_generator import generate_pool_url
+from pool_url_generator import generate_pool_url, generate_protocol_direct_link
 
 
 class GasFeeEstimator:
@@ -267,7 +267,7 @@ class LALSmartSearchV3:
             total_funding_apy = funding_rate_a_apy + funding_rate_b_apy
             total_apy = lp_apy - total_funding_apy
             
-            # 生成外部連結
+            # 生成外部連結（雙連結策略）
             external_url = generate_pool_url(
                 pool_id=pool["pool_id"],
                 protocol=pool["protocol"],
@@ -276,12 +276,19 @@ class LALSmartSearchV3:
                 pool_address=pool.get("pool_address", "")  # 傳遞實際的池地址
             )
             
+            # 生成協議直連（用於前端的「在協議上操作」按鈕）
+            protocol_url = generate_protocol_direct_link(
+                protocol=pool["protocol"],
+                chain=pool["chain"]
+            )
+            
             opportunities.append({
                 "pool_id": pool["pool_id"],
                 "protocol": pool["protocol"],
                 "chain": pool["chain"],
                 "symbol": pool["symbol"],
-                "external_url": external_url,
+                "external_url": external_url,  # DefiLlama 池頁面（主要連結）
+                "protocol_url": protocol_url,  # 協議直連（備用連結）
                 "tvl": pool["tvl"],
                 "lp_apy": lp_apy,
                 

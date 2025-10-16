@@ -1,18 +1,23 @@
 """
-池外部連結生成器
-根據協議和鏈生成正確的 LP 池 URL,直接連結到協議的池頁面
+池外部連結生成器 V2
+優先使用 DefiLlama 池頁面作為可靠的中轉連結
+DefiLlama 池頁面提供了直接跳轉到協議的功能，並且顯示完整的池信息
 """
 
 def generate_pool_url(pool_id: str, protocol: str, chain: str, symbol: str = "", pool_address: str = "") -> str:
     """
-    生成池的外部連結,直接連結到協議的池頁面
+    生成池的外部連結
+    
+    優先級：
+    1. DefiLlama 池頁面（最可靠，包含完整信息和跳轉按鈕）
+    2. 如果有 pool_address，嘗試生成協議直連
     
     Args:
-        pool_id: 池 ID (DefiLlama 格式或地址)
+        pool_id: 池 ID (DefiLlama UUID 格式)
         protocol: 協議名稱
         chain: 鏈名稱
         symbol: 池的交易對符號
-        pool_address: 實際的池地址 (0x開頭,從 poolMeta 提取)
+        pool_address: 實際的池地址 (0x開頭，如果可用)
     
     Returns:
         外部連結 URL
@@ -20,11 +25,119 @@ def generate_pool_url(pool_id: str, protocol: str, chain: str, symbol: str = "",
     protocol_lower = protocol.lower()
     chain_lower = chain.lower()
     
-    # 優先使用 pool_address,其次使用 pool_id (如果是地址格式)
-    address_to_use = pool_address if pool_address else (pool_id if pool_id and pool_id.startswith('0x') else "")
+    # 策略 1: 如果有 pool_id (DefiLlama UUID)，優先使用 DefiLlama 池頁面
+    # DefiLlama 池頁面提供：
+    # - 完整的池信息和歷史數據
+    # - 直接跳轉到協議的按鈕
+    # - 多個數據源的交叉驗證
+    if pool_id and len(pool_id) > 10:  # UUID 格式
+        return f"https://defillama.com/yields/pool/{pool_id}"
+    
+    # 策略 2: 如果有 pool_address，嘗試生成協議直連
+    # 這適用於某些特殊情況，但 DefiLlama 頁面通常更可靠
+    if pool_address and pool_address.startswith('0x'):
+        # Uniswap V3
+        if 'uniswap' in protocol_lower and 'v3' in protocol_lower:
+            chain_map = {
+                'ethereum': 'mainnet',
+                'arbitrum': 'arbitrum',
+                'optimism': 'optimism',
+                'polygon': 'polygon',
+                'base': 'base',
+                'bnb': 'bnb',
+                'celo': 'celo'
+            }
+            chain_slug = chain_map.get(chain_lower, chain_lower)
+            return f"https://app.uniswap.org/explore/pools/{chain_slug}/{pool_address}"
+        
+        # Aerodrome (Base)
+        if 'aerodrome' in protocol_lower:
+            return f"https://aerodrome.finance/liquidity/{pool_address}"
+        
+        # Pancakeswap
+        if 'pancake' in protocol_lower:
+            chain_map = {
+                'bsc': 'bsc',
+                'ethereum': 'eth',
+                'arbitrum': 'arb'
+            }
+            chain_param = chain_map.get(chain_lower, 'bsc')
+            return f"https://pancakeswap.finance/liquidity/{pool_address}?chain={chain_param}"
+        
+        # Curve
+        if 'curve' in protocol_lower:
+            return f"https://curve.fi/#/ethereum/pools/{pool_address}/deposit"
+        
+        # Balancer
+        if 'balancer' in protocol_lower:
+            chain_map = {
+                'ethereum': 'mainnet',
+                'arbitrum': 'arbitrum',
+                'optimism': 'optimism',
+                'polygon': 'polygon',
+                'gnosis': 'gnosis'
+            }
+            chain_param = chain_map.get(chain_lower, 'mainnet')
+            return f"https://app.balancer.fi/#/{chain_param}/pool/{pool_address}"
+        
+        # SushiSwap
+        if 'sushi' in protocol_lower:
+            chain_map = {
+                'ethereum': 'ethereum',
+                'arbitrum': 'arbitrum',
+                'optimism': 'optimism',
+                'polygon': 'polygon',
+                'avalanche': 'avalanche'
+            }
+            chain_param = chain_map.get(chain_lower, 'ethereum')
+            return f"https://www.sushi.com/pool/{chain_param}:{pool_address}"
+    
+    # 策略 3: Solana 生態系統（使用 pool_id）
+    # Raydium
+    if 'raydium' in protocol_lower and pool_id:
+        return f"https://raydium.io/liquidity/increase/?pool_id={pool_id}"
+    
+    # Orca
+    if 'orca' in protocol_lower and pool_id:
+        return f"https://www.orca.so/pools?pool={pool_id}"
+    
+    # 策略 4: 後備方案 - 返回協議的流動性頁面
+    protocol_liquidity_pages = {
+        'uniswap': 'https://app.uniswap.org/explore/pools',
+        'raydium': 'https://raydium.io/liquidity/',
+        'orca': 'https://www.orca.so/pools',
+        'aerodrome': 'https://aerodrome.finance/liquidity',
+        'pancakeswap': 'https://pancakeswap.finance/liquidity',
+        'curve': 'https://curve.fi/#/ethereum/pools',
+        'balancer': 'https://app.balancer.fi/#/pools',
+        'sushiswap': 'https://www.sushi.com/pool',
+        'traderjoe': 'https://traderjoexyz.com/avalanche/pool'
+    }
+    
+    for key, url in protocol_liquidity_pages.items():
+        if key in protocol_lower:
+            return url
+    
+    # 最後的後備: 返回 DefiLlama 總覽頁
+    return "https://defillama.com/yields"
+
+
+def generate_protocol_direct_link(protocol: str, chain: str) -> str:
+    """
+    生成協議的直接連結（用於前端的「在協議上查看」按鈕）
+    
+    Args:
+        protocol: 協議名稱
+        chain: 鏈名稱
+    
+    Returns:
+        協議連結 URL
+    """
+    protocol_lower = protocol.lower()
+    chain_lower = chain.lower()
     
     # Uniswap V3
-    if 'uniswap' in protocol_lower and 'v3' in protocol_lower:
+    if 'uniswap' in protocol_lower:
         chain_map = {
             'ethereum': 'mainnet',
             'arbitrum': 'arbitrum',
@@ -34,29 +147,19 @@ def generate_pool_url(pool_id: str, protocol: str, chain: str, symbol: str = "",
             'bnb': 'bnb',
             'celo': 'celo'
         }
-        chain_slug = chain_map.get(chain_lower, chain_lower)
-        if address_to_use:
-            return f"https://app.uniswap.org/explore/pools/{chain_slug}/{address_to_use}"
-        # 如果沒有地址,返回協議的池列表頁面
+        chain_slug = chain_map.get(chain_lower, 'mainnet')
         return f"https://app.uniswap.org/explore/pools/{chain_slug}"
     
-    # Raydium (Solana)
+    # Raydium
     if 'raydium' in protocol_lower:
-        # Raydium 使用自己的 pool_id 格式
-        if pool_id and not pool_id.startswith('0x'):
-            return f"https://raydium.io/liquidity/increase/?pool_id={pool_id}"
         return "https://raydium.io/liquidity/"
     
-    # Orca (Solana)
+    # Orca
     if 'orca' in protocol_lower:
-        if pool_id:
-            return f"https://www.orca.so/pools?pool={pool_id}"
         return "https://www.orca.so/pools"
     
-    # Aerodrome (Base)
+    # Aerodrome
     if 'aerodrome' in protocol_lower:
-        if address_to_use:
-            return f"https://aerodrome.finance/liquidity/{address_to_use}"
         return "https://aerodrome.finance/liquidity"
     
     # Pancakeswap
@@ -67,68 +170,14 @@ def generate_pool_url(pool_id: str, protocol: str, chain: str, symbol: str = "",
             'arbitrum': 'arb'
         }
         chain_param = chain_map.get(chain_lower, 'bsc')
-        
-        if address_to_use:
-            return f"https://pancakeswap.finance/liquidity/{address_to_use}?chain={chain_param}"
         return f"https://pancakeswap.finance/liquidity?chain={chain_param}"
     
-    # Curve
-    if 'curve' in protocol_lower:
-        if address_to_use:
-            return f"https://curve.fi/#/ethereum/pools/{address_to_use}/deposit"
-        return "https://curve.fi/#/ethereum/pools"
-    
-    # Balancer
-    if 'balancer' in protocol_lower:
-        chain_map = {
-            'ethereum': 'mainnet',
-            'arbitrum': 'arbitrum',
-            'optimism': 'optimism',
-            'polygon': 'polygon',
-            'gnosis': 'gnosis'
-        }
-        chain_param = chain_map.get(chain_lower, 'mainnet')
-        
-        if address_to_use:
-            return f"https://app.balancer.fi/#/{chain_param}/pool/{address_to_use}"
-        return f"https://app.balancer.fi/#/{chain_param}/pools"
-    
-    # Trader Joe (Avalanche)
-    if 'joe' in protocol_lower or 'trader' in protocol_lower:
-        if address_to_use:
-            return f"https://traderjoexyz.com/avalanche/pool/v21/{address_to_use}"
-        return "https://traderjoexyz.com/avalanche/pool"
-    
-    # SushiSwap
-    if 'sushi' in protocol_lower:
-        chain_map = {
-            'ethereum': 'ethereum',
-            'arbitrum': 'arbitrum',
-            'optimism': 'optimism',
-            'polygon': 'polygon',
-            'avalanche': 'avalanche'
-        }
-        chain_param = chain_map.get(chain_lower, 'ethereum')
-        
-        if address_to_use:
-            return f"https://www.sushi.com/pool/{chain_param}:{address_to_use}"
-        return f"https://www.sushi.com/pool?chainId={chain_param}"
-    
-    # 默認: 如果有 pool_id,返回 DefiLlama 的池頁面
-    # DefiLlama 頁面有直接到協議的操作按鈕
-    if pool_id:
-        return f"https://defillama.com/yields/pool/{pool_id}"
-    
-    # 最後的後備: 返回協議首頁
+    # 默認返回協議首頁
     protocol_urls = {
-        'uniswap': 'https://app.uniswap.org',
-        'raydium': 'https://raydium.io',
-        'orca': 'https://www.orca.so',
-        'aerodrome': 'https://aerodrome.finance',
-        'pancakeswap': 'https://pancakeswap.finance',
         'curve': 'https://curve.fi',
         'balancer': 'https://app.balancer.fi',
-        'sushiswap': 'https://www.sushi.com'
+        'sushiswap': 'https://www.sushi.com',
+        'traderjoe': 'https://traderjoexyz.com'
     }
     
     for key, url in protocol_urls.items():
@@ -142,35 +191,37 @@ def generate_pool_url(pool_id: str, protocol: str, chain: str, symbol: str = "",
 if __name__ == "__main__":
     test_cases = [
         {
-            "pool_id": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+            "pool_id": "fc9f488e-8183-416f-a61e-4e5c571d4395",
             "protocol": "uniswap-v3",
             "chain": "Ethereum",
-            "symbol": "WETH-USDC",
-            "pool_address": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640"
-        },
-        {
-            "pool_id": "747c1d2a-dccc-4ffc-8f16-3f3a2f6e8e5d",
-            "protocol": "uniswap-v3",
-            "chain": "Arbitrum",
             "symbol": "WETH-USDT",
-            "pool_address": "0x641c00a822e8b671738d32a431a4fb6074e5c79d"
+            "pool_address": ""
         },
         {
-            "pool_id": "raydium-wsol-usdc",
+            "pool_id": "bbecbf69-a4f7-43e3-8b72-de180d106e2c",
+            "protocol": "uniswap-v3",
+            "chain": "Ethereum",
+            "symbol": "WBTC-USDC",
+            "pool_address": "0x99ac8ca7087fa4a2a1fb6357269965a2014abc35"
+        },
+        {
+            "pool_id": "f3fa7ee4-bd8e-4ded-820f-4e775954b240",
             "protocol": "raydium-amm",
             "chain": "Solana",
-            "symbol": "WSOL-USDC",
+            "symbol": "USDC-LINK",
             "pool_address": ""
         }
     ]
     
-    print("=== 池 URL 生成測試 ===\n")
+    print("=== 池 URL 生成測試（V2 - DefiLlama 優先） ===\n")
     for case in test_cases:
         url = generate_pool_url(**case)
+        protocol_url = generate_protocol_direct_link(case['protocol'], case['chain'])
         print(f"協議: {case['protocol']}")
         print(f"鏈: {case['chain']}")
         print(f"池: {case['symbol']}")
-        print(f"pool_address: {case['pool_address']}")
-        print(f"URL: {url}")
+        print(f"pool_id: {case['pool_id']}")
+        print(f"池連結: {url}")
+        print(f"協議連結: {protocol_url}")
         print()
 
