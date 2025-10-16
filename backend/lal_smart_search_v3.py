@@ -257,7 +257,7 @@ class LALSmartSearchV3:
                 # 收益分解
                 "profit_breakdown": {
                     "lp_profit": profit_result["lp_profit"],
-                    "funding_profit": profit_result["funding_profit"],
+                    "funding_cost": profit_result["funding_cost"],
                     "il_loss": profit_result["il_loss"],
                     "gas_cost": profit_result["gas_cost"],
                     "total": profit_result["total_profit"]
@@ -357,7 +357,7 @@ class LALSmartSearchV3:
             print("收益分解:")
             breakdown = opp["profit_breakdown"]
             print(f"  LP 收益: ${breakdown['lp_profit']:,.2f}")
-            print(f"  資金費率收益: ${breakdown['funding_profit']:,.2f}")
+            print(f"  資金費率成本: ${breakdown['funding_cost']:,.2f}")
             print(f"  IL 損失: ${breakdown['il_loss']:,.2f}")
             print(f"  Gas 成本: ${breakdown['gas_cost']:,.2f}")
             print(f"  ✅ 總收益: ${breakdown['total']:,.2f}")

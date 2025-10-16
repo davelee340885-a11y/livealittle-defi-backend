@@ -356,8 +356,8 @@ class ILCalculator:
         # 1. LP 收益
         lp_profit = capital * (lp_apy / 100)
         
-        # 2. 資金費率收益
-        funding_profit = capital * (funding_apy / 100)
+        # 2. 資金費率成本（做空需支付,為負數）
+        funding_cost = -capital * (funding_apy / 100)
         
         # 3. IL 損失（已考慮對沖）
         il_loss = capital * (net_il_annual / 100)
@@ -365,15 +365,15 @@ class ILCalculator:
         # 4. Gas 成本
         gas_cost = gas_cost_annual
         
-        # 5. 總收益
-        total_profit = lp_profit + funding_profit + il_loss - gas_cost
+        # 5. 總收益（funding_cost 已是負數,il_loss 已是負數）
+        total_profit = lp_profit + funding_cost + il_loss - gas_cost
         
         # 6. 淨 APY
         net_apy = (total_profit / capital) * 100
         
         return {
             "lp_profit": lp_profit,
-            "funding_profit": funding_profit,
+            "funding_cost": funding_cost,
             "il_loss": il_loss,
             "gas_cost": gas_cost,
             "total_profit": total_profit,
