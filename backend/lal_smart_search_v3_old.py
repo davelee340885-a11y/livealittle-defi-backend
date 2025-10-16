@@ -11,7 +11,7 @@ import requests
 from davis_double_click_analyzer import DavisDoubleClickAnalyzer
 from unified_data_aggregator import UnifiedDataAggregator
 from delta_neutral_calculator import DeltaNeutralCalculator
-from il_calculator_compat import ILCalculator, HedgeParams
+from il_calculator import ILCalculator, HedgeParams
 
 
 class GasFeeEstimator:

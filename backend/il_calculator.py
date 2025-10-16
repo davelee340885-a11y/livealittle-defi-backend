@@ -1,11 +1,11 @@
 """
-無常損失（Impermanent Loss, IL）計算引擎
+Delta Neutral 策略計算引擎 (重寫版)
 
-實現精確的 IL 計算和 Delta Neutral 對沖效果分析
+基於正確的 Uniswap V3 數學和 Delta Neutral 策略邏輯
 """
 
 import math
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 from dataclasses import dataclass
 
 
@@ -38,27 +38,31 @@ VOLATILITY_ESTIMATES = {
 
 
 @dataclass
-class ILAnalysis:
-    """IL 分析結果"""
-    pool_volatility: float  # 池波動率 (%)
-    expected_il_annual: float  # 預期年化 IL (%)
-    hedge_effectiveness: float  # 對沖有效性 (0-1)
-    net_il_annual: float  # 淨 IL (%)
-    il_impact_usd: float  # IL 影響 (USD)
-    il_risk_level: str  # IL 風險等級
-    volatility_level: str  # 波動率等級
-    hedge_quality: str  # 對沖質量
+class DeltaNeutralAnalysis:
+    """Delta Neutral 策略分析結果"""
+    # LP 相關
+    lp_delta: float  # LP 的 Delta (0-1)
+    lp_fee_apy: float  # LP 手續費 APY (%)
+    
+    # 對沖相關
+    hedge_ratio: float  # 對沖比率 (0-1)
+    funding_rate_apy: float  # 資金費率 APY (%)
+    
+    # 收益分析
+    net_apy: float  # 淨 APY (%)
+    annual_profit: float  # 年化收益 (USD)
+    
+    # 風險指標
+    volatility: float  # 池波動率 (%)
+    max_drawdown: float  # 最大回撤 (%)
+    risk_level: str  # 風險等級
+    
+    # 詳細分解
+    profit_breakdown: Dict[str, float]  # 收益分解
 
 
-@dataclass
-class HedgeParams:
-    """對沖參數"""
-    hedge_ratio: float = 1.0  # 對沖比率 (0-1)
-    rebalance_frequency_days: float = 7  # 再平衡頻率（天）
-
-
-class ILCalculator:
-    """無常損失計算器"""
+class DeltaNeutralCalculator:
+    """Delta Neutral 策略計算器"""
     
     def __init__(self):
         self.volatility_map = self._build_volatility_map()
@@ -74,15 +78,7 @@ class ILCalculator:
         return vol_map
     
     def get_token_volatility(self, token: str) -> float:
-        """
-        獲取代幣的年化波動率
-        
-        Args:
-            token: 代幣符號（如 "ETH", "USDC"）
-        
-        Returns:
-            float: 年化波動率 (%)
-        """
+        """獲取代幣的年化波動率"""
         token = token.upper()
         
         # 移除常見前綴
@@ -97,427 +93,269 @@ class ILCalculator:
         # 默認為中小市值代幣
         return VOLATILITY_ESTIMATES["mid_small_cap"]["annual_volatility"]
     
-    def estimate_pool_volatility(self, token_a: str, token_b: str) -> float:
-        """
-        估算 LP 池的波動率
-        
-        邏輯:
-        - 穩定幣對: 極低波動率
-        - 一個穩定幣: 使用非穩定幣的波動率
-        - 兩個波動代幣: 使用較高的波動率
-        
-        Args:
-            token_a: 代幣 A
-            token_b: 代幣 B
-        
-        Returns:
-            float: 池波動率 (%)
-        """
-        vol_a = self.get_token_volatility(token_a)
-        vol_b = self.get_token_volatility(token_b)
-        
-        # 如果都是穩定幣（波動率 < 5%）
-        if vol_a < 5 and vol_b < 5:
-            return 2.0
-        
-        # 如果一個是穩定幣
-        if vol_a < 5:
-            return vol_b
-        if vol_b < 5:
-            return vol_a
-        
-        # 如果都是波動代幣，使用較高的波動率
-        return max(vol_a, vol_b)
-    
-    def calculate_il(self, price_change_percent: float) -> float:
-        """
-        計算無常損失
-        
-        公式: IL = (2 * sqrt(price_ratio) / (1 + price_ratio)) - 1
-        
-        Args:
-            price_change_percent: 價格變化百分比（如 50 表示上漲 50%）
-        
-        Returns:
-            float: IL 百分比（負數表示損失）
-        """
-        price_ratio = 1 + (price_change_percent / 100)
-        il = (2 * math.sqrt(price_ratio) / (1 + price_ratio)) - 1
-        return il * 100  # 轉換為百分比
-    
-    def estimate_expected_il(
+    def calculate_lp_delta(
         self,
-        volatility_annual: float,
-        holding_period_days: float = 365
+        current_price: float,
+        price_lower: float,
+        price_upper: float
     ) -> float:
         """
-        基於年化波動率估算預期 IL
+        計算 LP 倉位的 Delta
         
-        使用正確的 IL 公式，假設價格可能變動 ±2σ (約95% 置信區間)
+        Delta = (√P_upper - √P) / (√P_upper - √P_lower)
         
         Args:
-            volatility_annual: 年化波動率 (%)
-            holding_period_days: 持有天數
+            current_price: 當前價格
+            price_lower: 價格下限
+            price_upper: 價格上限
         
         Returns:
-            float: 預期 IL 百分比（負數）
+            float: Delta (0-1)
         """
-        # 將年化波動率轉換為持有期波動率
-        holding_volatility = volatility_annual * math.sqrt(holding_period_days / 365)
+        sqrt_p = math.sqrt(current_price)
+        sqrt_p_lower = math.sqrt(price_lower)
+        sqrt_p_upper = math.sqrt(price_upper)
         
-        # 假設價格可能變動範圍：±2σ (約95% 置信區間)
-        # 這意味著價格可能上漲或下跌 2 * volatility
-        price_change_2sigma = 2 * holding_volatility
+        delta = (sqrt_p_upper - sqrt_p) / (sqrt_p_upper - sqrt_p_lower)
         
-        # 計算價格上漲的 IL
-        price_ratio_up = 1 + (price_change_2sigma / 100)
-        il_up = (2 * math.sqrt(price_ratio_up) / (1 + price_ratio_up)) - 1
-        
-        # 計算價格下跌的 IL
-        price_ratio_down = 1 - (price_change_2sigma / 100)
-        if price_ratio_down <= 0:
-            # 價格下跌超過 100%，使用極限值
-            il_down = -1.0
-        else:
-            il_down = (2 * math.sqrt(price_ratio_down) / (1 + price_ratio_down)) - 1
-        
-        # 取最壞情況（絕對值最大的損失）
-        expected_il = min(il_up, il_down) * 100  # 轉換為百分比
-        
-        return expected_il
+        # 確保 Delta 在 [0, 1] 範圍內
+        return max(0.0, min(1.0, delta))
     
-    def calculate_hedge_effectiveness(
+    def estimate_gas_cost(
         self,
-        hedge_params: HedgeParams = None
+        chain: str,
+        rebalance_frequency_days: float
     ) -> float:
         """
-        計算對沖有效性
+        估算 Gas 成本
         
         Args:
-            hedge_params: 對沖參數
+            chain: 鏈名稱
+            rebalance_frequency_days: 再平衡頻率（天）
         
         Returns:
-            float: 對沖有效性 (0-1，1 表示 100% 有效)
+            float: 年化 Gas 成本 (USD)
         """
-        if hedge_params is None:
-            hedge_params = HedgeParams()
+        # 單次操作的 Gas 成本估算
+        gas_costs = {
+            "ethereum": 50.0,  # 以太坊主網
+            "arbitrum": 2.0,   # Arbitrum
+            "optimism": 2.0,   # Optimism
+            "polygon": 0.5,    # Polygon
+            "base": 1.0,       # Base
+            "bsc": 1.0,        # BSC
+        }
         
-        # 基礎對沖有效性
-        base_effectiveness = hedge_params.hedge_ratio
+        chain_lower = chain.lower()
+        single_operation_cost = gas_costs.get(chain_lower, 10.0)
         
-        # 再平衡頻率影響（越頻繁越有效）
-        # 每週再平衡: 1.0, 每月再平衡: 0.9, 更少: 更低
-        rebalance_factor = 1 - (hedge_params.rebalance_frequency_days / 30) * 0.1
-        rebalance_factor = max(0.7, min(1.0, rebalance_factor))
+        # 年化 Gas 成本 = 單次成本 × (365 / 再平衡頻率)
+        annual_gas_cost = single_operation_cost * (365 / rebalance_frequency_days)
         
-        # 總有效性
-        effectiveness = base_effectiveness * rebalance_factor
-        
-        return min(1.0, effectiveness)
+        return annual_gas_cost
     
-    def calculate_net_il(
+    def calculate_delta_neutral_pnl(
         self,
-        expected_il: float,
-        hedge_effectiveness: float
-    ) -> float:
-        """
-        計算對沖後的淨 IL
-        
-        Args:
-            expected_il: 預期 IL（負數）
-            hedge_effectiveness: 對沖有效性 (0-1)
-        
-        Returns:
-            float: 淨 IL 百分比
-        """
-        # 對沖後的 IL = 原始 IL * (1 - 對沖有效性)
-        net_il = expected_il * (1 - hedge_effectiveness)
-        
-        return net_il
-    
-    def get_il_risk_level(self, pool_volatility: float) -> str:
-        """
-        獲取 IL 風險等級
-        
-        Args:
-            pool_volatility: 池波動率 (%)
-        
-        Returns:
-            str: 風險等級（low/medium/high）
-        """
-        if pool_volatility < 10:
-            return "low"
-        elif pool_volatility < 80:
-            return "medium"
-        else:
-            return "high"
-    
-    def get_volatility_level(self, pool_volatility: float) -> str:
-        """
-        獲取波動率等級
-        
-        Args:
-            pool_volatility: 池波動率 (%)
-        
-        Returns:
-            str: 波動率等級（low/medium/high/extreme）
-        """
-        if pool_volatility < 10:
-            return "low"
-        elif pool_volatility < 50:
-            return "medium"
-        elif pool_volatility < 100:
-            return "high"
-        else:
-            return "extreme"
-    
-    def get_hedge_quality(self, hedge_effectiveness: float) -> str:
-        """
-        獲取對沖質量
-        
-        Args:
-            hedge_effectiveness: 對沖有效性 (0-1)
-        
-        Returns:
-            str: 對沖質量（poor/fair/good/excellent）
-        """
-        if hedge_effectiveness < 0.7:
-            return "poor"
-        elif hedge_effectiveness < 0.85:
-            return "fair"
-        elif hedge_effectiveness < 0.95:
-            return "good"
-        else:
-            return "excellent"
-    
-    def analyze_il(
-        self,
-        token_a: str,
-        token_b: str,
         capital: float,
-        hedge_params: HedgeParams = None,
-        holding_period_days: float = 365
-    ) -> ILAnalysis:
-        """
-        完整的 IL 分析
-        
-        Args:
-            token_a: 代幣 A
-            token_b: 代幣 B
-            capital: 投資資本 (USD)
-            hedge_params: 對沖參數
-            holding_period_days: 持有天數
-        
-        Returns:
-            ILAnalysis: IL 分析結果
-        """
-        if hedge_params is None:
-            hedge_params = HedgeParams()
-        
-        # 1. 估算池波動率
-        pool_volatility = self.estimate_pool_volatility(token_a, token_b)
-        
-        # 2. 計算預期 IL
-        expected_il_annual = self.estimate_expected_il(
-            pool_volatility,
-            holding_period_days
-        )
-        
-        # 3. 計算對沖有效性
-        hedge_effectiveness = self.calculate_hedge_effectiveness(hedge_params)
-        
-        # 4. 計算淨 IL
-        net_il_annual = self.calculate_net_il(expected_il_annual, hedge_effectiveness)
-        
-        # 5. 計算 IL 影響（USD）
-        il_impact_usd = capital * (net_il_annual / 100)
-        
-        # 6. 獲取風險等級
-        il_risk_level = self.get_il_risk_level(pool_volatility)
-        volatility_level = self.get_volatility_level(pool_volatility)
-        hedge_quality = self.get_hedge_quality(hedge_effectiveness)
-        
-        return ILAnalysis(
-            pool_volatility=pool_volatility,
-            expected_il_annual=expected_il_annual,
-            hedge_effectiveness=hedge_effectiveness,
-            net_il_annual=net_il_annual,
-            il_impact_usd=il_impact_usd,
-            il_risk_level=il_risk_level,
-            volatility_level=volatility_level,
-            hedge_quality=hedge_quality
-        )
-    
-    def calculate_adjusted_net_profit(
-        self,
         lp_apy: float,
         funding_apy: float,
-        net_il_annual: float,
-        gas_cost_annual: float,
-        capital: float
-    ) -> Dict:
+        hedge_ratio: float = 1.0,
+        rebalance_frequency_days: float = 7,
+        chain: str = "ethereum",
+        price_range_pct: float = 10.0  # 價格範圍 ±%
+    ) -> DeltaNeutralAnalysis:
         """
-        計算考慮 IL 後的調整淨收益
+        計算 Delta Neutral 策略的損益
+        
+        核心邏輯:
+        1. LP 倉位有一個 Delta (通常 30-70%)
+        2. 對沖該 Delta 的資產數量
+        3. 淨收益 = LP 手續費 - 資金費率成本 - Gas 成本
         
         Args:
-            lp_apy: LP APY (%)
-            funding_apy: 資金費率 APY (%)
-            net_il_annual: 年化淨 IL (%)
-            gas_cost_annual: 年化 Gas 成本 (USD)
             capital: 投資資本 (USD)
+            lp_apy: LP 手續費 APY (%)
+            funding_apy: 資金費率 APY (%)
+            hedge_ratio: 對沖比率 (0-1)
+            rebalance_frequency_days: 再平衡頻率（天）
+            chain: 鏈名稱
+            price_range_pct: 價格範圍百分比
         
         Returns:
-            dict: 包含各項收益和成本的詳細信息
+            DeltaNeutralAnalysis: 策略分析結果
         """
-        # 1. LP 收益
+        # 1. 計算 LP Delta (假設價格在範圍中間)
+        # 簡化模型: 假設價格範圍 ±10%, Delta ≈ 0.5
+        # 精確計算需要知道具體的價格範圍
+        current_price = 100  # 標準化價格
+        price_lower = current_price * (1 - price_range_pct / 100)
+        price_upper = current_price * (1 + price_range_pct / 100)
+        
+        lp_delta = self.calculate_lp_delta(current_price, price_lower, price_upper)
+        
+        # 2. 實際對沖的資產比例
+        effective_hedge = lp_delta * hedge_ratio
+        
+        # 3. 計算各項收益/成本
+        
+        # LP 手續費收益 (整個資本都在 LP 中)
         lp_profit = capital * (lp_apy / 100)
         
-        # 2. 資金費率成本（做空需支付,為負數）
-        funding_cost = -capital * (funding_apy / 100)
+        # 資金費率成本 (只對沖 Delta 部分)
+        # 注意: funding_apy 可能是正數或負數
+        # 正數表示做空需要支付, 負數表示做空可以收取
+        funding_cost = capital * effective_hedge * (funding_apy / 100)
         
-        # 3. IL 損失（已考慮對沖）
-        il_loss = capital * (net_il_annual / 100)
+        # Gas 成本
+        gas_cost = self.estimate_gas_cost(chain, rebalance_frequency_days)
         
-        # 4. Gas 成本
-        gas_cost = gas_cost_annual
-        
-        # 5. 總收益（funding_cost 已是負數,il_loss 已是負數）
-        total_profit = lp_profit + funding_cost + il_loss - gas_cost
-        
-        # 6. 淨 APY
+        # 4. 計算淨收益
+        # 在完美對沖下, LP 價值變化和對沖損益相抵消
+        # 淨收益 = LP 手續費 - 資金費率成本 - Gas 成本
+        total_profit = lp_profit - funding_cost - gas_cost
         net_apy = (total_profit / capital) * 100
         
-        return {
+        # 5. 風險評估
+        # 風險主要來自不完美對沖和資金費率波動
+        risk_score = abs(1.0 - hedge_ratio) * 100  # 未對沖部分的風險
+        
+        if risk_score < 10:
+            risk_level = "極低"
+        elif risk_score < 30:
+            risk_level = "低"
+        elif risk_score < 50:
+            risk_level = "中"
+        else:
+            risk_level = "高"
+        
+        # 6. 最大回撤估算
+        # 主要風險: 資金費率突然飆升
+        max_drawdown = abs(funding_cost / capital) * 100 * 2  # 假設最壞情況翻倍
+        
+        # 7. 收益分解
+        profit_breakdown = {
             "lp_profit": lp_profit,
-            "funding_cost": funding_cost,
-            "il_loss": il_loss,
-            "gas_cost": gas_cost,
-            "total_profit": total_profit,
-            "net_apy": net_apy,
-            "breakdown": {
-                "lp_apy": lp_apy,
-                "funding_apy": funding_apy,
-                "il_impact": net_il_annual,
-                "gas_impact": -(gas_cost / capital) * 100
-            }
+            "funding_cost": -funding_cost,  # 負數表示成本
+            "gas_cost": -gas_cost,
+            "total": total_profit
+        }
+        
+        return DeltaNeutralAnalysis(
+            lp_delta=lp_delta,
+            lp_fee_apy=lp_apy,
+            hedge_ratio=hedge_ratio,
+            funding_rate_apy=funding_apy,
+            net_apy=net_apy,
+            annual_profit=total_profit,
+            volatility=0.0,  # 完美對沖下波動率接近 0
+            max_drawdown=max_drawdown,
+            risk_level=risk_level,
+            profit_breakdown=profit_breakdown
+        )
+    
+    def simulate_price_scenario(
+        self,
+        capital: float,
+        lp_apy: float,
+        funding_apy: float,
+        price_change_pct: float,
+        hedge_ratio: float = 1.0,
+        days: int = 1,
+        chain: str = "ethereum",
+        price_range_pct: float = 10.0
+    ) -> Dict[str, float]:
+        """
+        模擬價格變動情境
+        
+        計算在特定價格變動下, Delta Neutral 策略的表現
+        
+        Args:
+            capital: 投資資本 (USD)
+            lp_apy: LP 手續費 APY (%)
+            funding_apy: 資金費率 APY (%)
+            price_change_pct: 價格變動百分比 (如 10 表示上漲 10%)
+            hedge_ratio: 對沖比率 (0-1)
+            days: 持有天數
+            chain: 鏈名稱
+            price_range_pct: 價格範圍百分比
+        
+        Returns:
+            Dict: 包含各項損益的字典
+        """
+        # 1. 計算 LP Delta
+        current_price = 100
+        price_lower = current_price * (1 - price_range_pct / 100)
+        price_upper = current_price * (1 + price_range_pct / 100)
+        
+        lp_delta = self.calculate_lp_delta(current_price, price_lower, price_upper)
+        
+        # 2. 實際對沖比例
+        effective_hedge = lp_delta * hedge_ratio
+        
+        # 3. LP 價值變化
+        # 簡化模型: LP 價值變化 ≈ Delta × 價格變動 × 資本
+        price_change_ratio = price_change_pct / 100
+        lp_value_change = capital * lp_delta * price_change_ratio
+        
+        # 4. 對沖倉位損益
+        # 做空: 價格上漲虧損, 價格下跌盈利
+        hedge_pnl = -capital * effective_hedge * price_change_ratio
+        
+        # 5. LP 手續費 (按天計算)
+        lp_fee = capital * (lp_apy / 100) * (days / 365)
+        
+        # 6. 資金費率成本 (按天計算)
+        funding_cost = capital * effective_hedge * (funding_apy / 100) * (days / 365)
+        
+        # 7. Gas 成本
+        gas_cost = self.estimate_gas_cost(chain, 7) * (days / 365)
+        
+        # 8. 總淨損益
+        # 在完美對沖下: lp_value_change + hedge_pnl ≈ 0
+        total_pnl = lp_value_change + hedge_pnl + lp_fee - funding_cost - gas_cost
+        
+        # 9. 對沖效果評估
+        hedge_effectiveness = 1.0 - abs(lp_value_change + hedge_pnl) / abs(lp_value_change) if lp_value_change != 0 else 1.0
+        
+        return {
+            "lp_value_change": lp_value_change,
+            "hedge_pnl": hedge_pnl,
+            "lp_fee": lp_fee,
+            "funding_cost": -funding_cost,  # 負數表示成本
+            "gas_cost": -gas_cost,
+            "total_pnl": total_pnl,
+            "final_value": capital + total_pnl,
+            "hedge_effectiveness": hedge_effectiveness,
+            "lp_delta": lp_delta,
+            "effective_hedge": effective_hedge
         }
 
 
-# 測試代碼
-if __name__ == "__main__":
-    calculator = ILCalculator()
+# 向後兼容: 保留舊的函數名
+def calculate_adjusted_net_profit(
+    capital: float,
+    lp_apy: float,
+    funding_apy: float,
+    hedge_ratio: float = 1.0,
+    rebalance_frequency: float = 7,
+    chain: str = "ethereum"
+) -> Tuple[float, Dict[str, float]]:
+    """
+    向後兼容的函數
     
-    print("=" * 60)
-    print("無常損失（IL）計算引擎測試")
-    print("=" * 60)
+    Returns:
+        Tuple[float, Dict]: (淨 APY, 收益分解字典)
+    """
+    calculator = DeltaNeutralCalculator()
     
-    # 測試 1: 基礎 IL 計算
-    print("\n測試 1: 基礎 IL 計算")
-    print("-" * 60)
-    for price_change in [25, 50, 100, 200, 300]:
-        il = calculator.calculate_il(price_change)
-        print(f"價格變化 {price_change:3d}% → IL: {il:6.2f}%")
-    
-    # 測試 2: 代幣波動率
-    print("\n測試 2: 代幣波動率")
-    print("-" * 60)
-    test_tokens = ["USDC", "ETH", "BTC", "SOL", "LINK", "RANDOM"]
-    for token in test_tokens:
-        vol = calculator.get_token_volatility(token)
-        print(f"{token:10s} → 年化波動率: {vol:6.1f}%")
-    
-    # 測試 3: 池波動率
-    print("\n測試 3: 池波動率")
-    print("-" * 60)
-    test_pairs = [
-        ("USDC", "USDT"),
-        ("ETH", "USDC"),
-        ("ETH", "BTC"),
-        ("SOL", "LINK")
-    ]
-    for token_a, token_b in test_pairs:
-        pool_vol = calculator.estimate_pool_volatility(token_a, token_b)
-        print(f"{token_a}-{token_b:4s} → 池波動率: {pool_vol:6.1f}%")
-    
-    # 測試 4: 完整的 IL 分析（ETH-USDC 池）
-    print("\n測試 4: 完整的 IL 分析（ETH-USDC 池，$10,000 投資）")
-    print("-" * 60)
-    
-    il_analysis = calculator.analyze_il(
-        token_a="ETH",
-        token_b="USDC",
-        capital=10000,
-        hedge_params=HedgeParams(hedge_ratio=1.0, rebalance_frequency_days=7)
+    result = calculator.calculate_delta_neutral_pnl(
+        capital=capital,
+        lp_apy=lp_apy,
+        funding_apy=funding_apy,
+        hedge_ratio=hedge_ratio,
+        rebalance_frequency_days=rebalance_frequency,
+        chain=chain
     )
     
-    print(f"池波動率: {il_analysis.pool_volatility:.1f}%")
-    print(f"預期年化 IL: {il_analysis.expected_il_annual:.2f}%")
-    print(f"對沖有效性: {il_analysis.hedge_effectiveness * 100:.1f}%")
-    print(f"淨年化 IL: {il_analysis.net_il_annual:.2f}%")
-    print(f"IL 影響: ${il_analysis.il_impact_usd:,.2f}")
-    print(f"IL 風險等級: {il_analysis.il_risk_level}")
-    print(f"波動率等級: {il_analysis.volatility_level}")
-    print(f"對沖質量: {il_analysis.hedge_quality}")
-    
-    # 測試 5: 調整後的淨收益（考慮 IL）
-    print("\n測試 5: 調整後的淨收益（考慮 IL）")
-    print("-" * 60)
-    
-    result = calculator.calculate_adjusted_net_profit(
-        lp_apy=101.47,
-        funding_apy=10.95,
-        net_il_annual=il_analysis.net_il_annual,
-        gas_cost_annual=200,
-        capital=10000
-    )
-    
-    print(f"LP 收益: ${result['lp_profit']:,.2f}")
-    print(f"資金費率收益: ${result['funding_profit']:,.2f}")
-    print(f"IL 損失: ${result['il_loss']:,.2f}")
-    print(f"Gas 成本: ${result['gas_cost']:,.2f}")
-    print(f"總收益: ${result['total_profit']:,.2f}")
-    print(f"淨 APY: {result['net_apy']:.2f}%")
-    
-    print("\n收益分解:")
-    print(f"  LP APY: {result['breakdown']['lp_apy']:.2f}%")
-    print(f"  資金費率 APY: {result['breakdown']['funding_apy']:.2f}%")
-    print(f"  IL 影響: {result['breakdown']['il_impact']:.2f}%")
-    print(f"  Gas 影響: {result['breakdown']['gas_impact']:.2f}%")
-    
-    # 測試 6: 不同對沖策略的比較
-    print("\n測試 6: 不同對沖策略的比較")
-    print("-" * 60)
-    
-    hedge_strategies = [
-        ("無對沖", HedgeParams(hedge_ratio=0.0, rebalance_frequency_days=30)),
-        ("50% 對沖", HedgeParams(hedge_ratio=0.5, rebalance_frequency_days=7)),
-        ("100% 對沖（每週）", HedgeParams(hedge_ratio=1.0, rebalance_frequency_days=7)),
-        ("100% 對沖（每月）", HedgeParams(hedge_ratio=1.0, rebalance_frequency_days=30)),
-    ]
-    
-    for strategy_name, hedge_params in hedge_strategies:
-        il_analysis = calculator.analyze_il(
-            token_a="ETH",
-            token_b="USDC",
-            capital=10000,
-            hedge_params=hedge_params
-        )
-        
-        result = calculator.calculate_adjusted_net_profit(
-            lp_apy=101.47,
-            funding_apy=10.95,
-            net_il_annual=il_analysis.net_il_annual,
-            gas_cost_annual=200,
-            capital=10000
-        )
-        
-        print(f"\n{strategy_name}:")
-        print(f"  對沖有效性: {il_analysis.hedge_effectiveness * 100:.1f}%")
-        print(f"  淨 IL: {il_analysis.net_il_annual:.2f}%")
-        print(f"  淨 APY: {result['net_apy']:.2f}%")
-        print(f"  總收益: ${result['total_profit']:,.2f}")
-    
-    print("\n" + "=" * 60)
-    print("✅ 所有測試完成！")
-    print("=" * 60)
+    return result.net_apy, result.profit_breakdown
 
