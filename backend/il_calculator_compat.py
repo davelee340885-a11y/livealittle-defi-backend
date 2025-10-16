@@ -119,23 +119,35 @@ class ILCalculator:
         新邏輯: 淨收益 = LP 手續費 - 資金費率成本 - Gas 成本
         (不再單獨扣除 IL,因為 IL 已經被對沖抵消)
         """
-        # 使用新的 Delta Neutral 計算器
-        result = self.dn_calc.calculate_delta_neutral_pnl(
-            capital=capital,
-            lp_apy=lp_apy,
-            funding_apy=funding_apy,
-            hedge_ratio=hedge_ratio,
-            rebalance_frequency_days=7,
-            chain="ethereum"
-        )
+        # 計算 LP Delta (假設價格在範圍中間)
+        current_price = 100
+        price_range_pct = 10.0
+        price_lower = current_price * (1 - price_range_pct / 100)
+        price_upper = current_price * (1 + price_range_pct / 100)
+        
+        lp_delta = self.dn_calc.calculate_lp_delta(current_price, price_lower, price_upper)
+        
+        # 實際對沖的資產比例
+        effective_hedge = lp_delta * hedge_ratio
+        
+        # 計算各項收益/成本
+        lp_profit = capital * (lp_apy / 100)
+        funding_cost = capital * effective_hedge * (funding_apy / 100)
+        
+        # 使用傳入的 gas_cost_annual 而不是重新計算
+        gas_cost = gas_cost_annual
+        
+        # 淨收益 = LP 手續費 - 資金費率成本 - Gas 成本
+        total_profit = lp_profit - funding_cost - gas_cost
+        net_apy = (total_profit / capital) * 100
         
         # 轉換為舊版 API 格式
         return {
-            "lp_profit": result.profit_breakdown["lp_profit"],
-            "funding_cost": result.profit_breakdown["funding_cost"],
+            "lp_profit": lp_profit,
+            "funding_cost": -funding_cost,  # 負數表示成本
             "il_loss": 0.0,  # 在新邏輯中,IL 已被對沖抵消
-            "gas_cost": result.profit_breakdown["gas_cost"],
-            "total_profit": result.profit_breakdown["total"],
-            "net_apy": result.net_apy
+            "gas_cost": -gas_cost,  # 負數表示成本
+            "total_profit": total_profit,
+            "net_apy": net_apy
         }
 
