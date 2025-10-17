@@ -1,6 +1,6 @@
 """
-LAL 智能搜尋服務 V3
-整合戴維斯雙擊分析、Delta Neutral 配對、IL 計算、成本效益計算
+LAL 智能搜尋服務 V3 (整合 V2 評分系統)
+整合戴維斯雙擊分析、Delta Neutral 配對、IL 計算、成本效益計算和V2評分引擎
 """
 
 from typing import Dict, List, Optional
@@ -14,6 +14,9 @@ from delta_neutral_calculator import DeltaNeutralCalculator
 from il_calculator_v2 import ILCalculatorV2, HedgeParamsV2
 from pool_parser import PoolParser
 from pool_url_generator import generate_pool_url, generate_protocol_direct_link
+
+# 導入 V2 評分引擎
+from scoring_engine_v2 import ScoringEngineV2
 
 
 class GasFeeEstimator:
@@ -106,7 +109,7 @@ class GasFeeEstimator:
 
 
 class LALSmartSearchV3:
-    """LAL 智能搜尋服務 V3（整合 IL 計算）"""
+    """LAL 智能搜尋服務 V3（整合 IL 計算和 V2 評分系統）"""
     
     def __init__(self):
         self.davis_analyzer = DavisDoubleClickAnalyzerV2()
@@ -115,6 +118,160 @@ class LALSmartSearchV3:
         self.gas_estimator = GasFeeEstimator()
         self.il_calculator = ILCalculatorV2()  # V2 計算器
         self.pool_parser = PoolParser()  # 池解析器
+        self.scoring_engine_v2 = ScoringEngineV2()  # V2 評分引擎
+    
+    def _build_tooltip_data(
+        self,
+        opportunity: Dict,
+        score_result: Dict,
+        token_a: str,
+        token_b: str
+    ) -> Dict:
+        """
+        構建tooltip所需的數據結構
+        
+        Args:
+            opportunity: 機會數據
+            score_result: V2評分結果
+            token_a: 代幣A符號
+            token_b: 代幣B符號
+        
+        Returns:
+            Tooltip數據
+        """
+        liquidity_data = opportunity.get("liquidity_data", {})
+        hedgeability_data = opportunity.get("hedgeability_data", {})
+        
+        return {
+            "total_score": score_result["final_score"],
+            "grade": score_result["grade"],
+            "risk_profile": "平衡型",
+            "passed_threshold": True,
+            "dimensions": [
+                {
+                    "id": "yield",
+                    "name": "淨收益",
+                    "icon": "💰",
+                    "score": score_result["component_scores"]["yield"],
+                    "weight": int(score_result["weights"]["yield"] * 100),
+                    "contribution": score_result["component_scores"]["yield"] * score_result["weights"]["yield"],
+                    "description": "調整後淨APY和ROI的綜合評估",
+                    "details": [
+                        {"label": "當前 APY", "value": f"{opportunity.get('adjusted_net_apy', 0):.2f}%"},
+                        {"label": "歷史 ROI", "value": f"{opportunity.get('roi', 0):.0f}%"}
+                    ]
+                },
+                {
+                    "id": "growth",
+                    "name": "增長潛力",
+                    "icon": "📈",
+                    "score": score_result["component_scores"]["growth"],
+                    "weight": int(score_result["weights"]["growth"] * 100),
+                    "contribution": score_result["component_scores"]["growth"] * score_result["weights"]["growth"],
+                    "description": "戴維斯雙擊機會評估",
+                    "details": [
+                        {"label": "戴維斯評分", "value": f"{opportunity.get('davis_score', 0):.1f} 分"}
+                    ]
+                },
+                {
+                    "id": "liquidity",
+                    "name": "流動性",
+                    "icon": "💧",
+                    "score": score_result["component_scores"]["liquidity"],
+                    "weight": int(score_result["weights"]["liquidity"] * 100),
+                    "contribution": score_result["component_scores"]["liquidity"] * score_result["weights"]["liquidity"],
+                    "description": "現貨市場的交易量和深度",
+                    "grade": liquidity_data.get("grade", "N/A"),
+                    "details": [
+                        {"label": f"{token_a} 24h交易量", "value": f"${liquidity_data.get('token_a_volume_24h', 0)/1e9:.1f}B"},
+                        {"label": f"{token_b} 24h交易量", "value": f"${liquidity_data.get('token_b_volume_24h', 0)/1e9:.1f}B"},
+                        {"label": "綜合評級", "value": f"{liquidity_data.get('grade', 'N/A')}級"}
+                    ]
+                },
+                {
+                    "id": "hedgeability",
+                    "name": "可對沖性",
+                    "icon": "🛡️",
+                    "score": score_result["component_scores"]["hedgeability"],
+                    "weight": int(score_result["weights"]["hedgeability"] * 100),
+                    "contribution": score_result["component_scores"]["hedgeability"] * score_result["weights"]["hedgeability"],
+                    "description": "永續合約的可用性和成本",
+                    "grade": hedgeability_data.get("grade", "N/A"),
+                    "details": [
+                        {"label": f"{token_a} 永續合約", "value": f"{hedgeability_data.get('token_a_score', 0):.0f}分"},
+                        {"label": f"{token_b} 永續合約", "value": f"{hedgeability_data.get('token_b_score', 0):.0f}分"},
+                        {"label": "綜合評級", "value": f"{hedgeability_data.get('grade', 'N/A')}級"}
+                    ]
+                },
+                {
+                    "id": "security",
+                    "name": "協議安全",
+                    "icon": "🔒",
+                    "score": score_result["component_scores"]["security"],
+                    "weight": int(score_result["weights"]["security"] * 100),
+                    "contribution": score_result["component_scores"]["security"] * score_result["weights"]["security"],
+                    "description": "智能合約和協議層面的安全性",
+                    "grade": opportunity.get("security_grade", "N/A"),
+                    "details": [
+                        {"label": "協議", "value": opportunity.get("protocol", "Unknown")},
+                        {"label": "安全評分", "value": f"{opportunity.get('security_score', 0):.2f}/100"},
+                        {"label": "評級", "value": f"{opportunity.get('security_grade', 'N/A')}級"}
+                    ]
+                },
+                {
+                    "id": "scale",
+                    "name": "規模信任",
+                    "icon": "📊",
+                    "score": score_result["component_scores"]["scale"],
+                    "weight": int(score_result["weights"]["scale"] * 100),
+                    "contribution": score_result["component_scores"]["scale"] * score_result["weights"]["scale"],
+                    "description": "TVL規模和市場信任度",
+                    "details": [
+                        {"label": "當前 TVL", "value": f"${opportunity.get('tvl', 0)/1e6:.2f}M"},
+                        {"label": "規模評分", "value": f"{score_result['component_scores']['scale']:.1f} 分"}
+                    ]
+                }
+            ],
+            "summary": {
+                "risk_control_weight": 50,
+                "risk_control_dimensions": ["流動性", "可對沖性", "協議安全"],
+                "risk_control_contribution": (
+                    score_result["component_scores"]["liquidity"] * score_result["weights"]["liquidity"] +
+                    score_result["component_scores"]["hedgeability"] * score_result["weights"]["hedgeability"] +
+                    score_result["component_scores"]["security"] * score_result["weights"]["security"]
+                ),
+                "highlights": self._generate_highlights(opportunity, liquidity_data, hedgeability_data)
+            }
+        }
+    
+    def _generate_highlights(
+        self,
+        opportunity: Dict,
+        liquidity_data: Dict,
+        hedgeability_data: Dict
+    ) -> List[str]:
+        """生成評估亮點"""
+        highlights = []
+        
+        liquidity_grade = liquidity_data.get("grade", "F")
+        if liquidity_grade in ["A", "B"]:
+            highlights.append(f"✅ 流動性優秀 ({liquidity_grade}級)")
+        else:
+            highlights.append(f"⚠️ 流動性偏低 ({liquidity_grade}級)")
+        
+        hedgeability_grade = hedgeability_data.get("grade", "F")
+        if hedgeability_grade in ["A", "B"]:
+            highlights.append(f"✅ 可對沖性優秀 ({hedgeability_grade}級)")
+        else:
+            highlights.append(f"⚠️ 可對沖性偏低 ({hedgeability_grade}級)")
+        
+        security_grade = opportunity.get("security_grade", "F")
+        if security_grade in ["A", "B"]:
+            highlights.append(f"✅ 協議安全優秀 ({security_grade}級)")
+        else:
+            highlights.append(f"⚠️ 協議安全偏低 ({security_grade}級)")
+        
+        return highlights
     
     def search(
         self,
@@ -124,10 +281,11 @@ class LALSmartSearchV3:
         min_tvl: float = 5_000_000,
         min_apy: float = 5.0,
         top_n: int = 5,
-        hedge_params: HedgeParamsV2 = None  # V2 對冲參數
+        hedge_params: HedgeParamsV2 = None,
+        use_v2_scoring: bool = True  # 是否使用V2評分排序
     ) -> List[Dict]:
         """
-        智能搜尋最佳 Delta Neutral 方案（考慮 IL）
+        智能搜尋最佳 Delta Neutral 方案（考慮 IL 和 V2 評分）
         
         Args:
             token: 目標代幣
@@ -137,6 +295,7 @@ class LALSmartSearchV3:
             min_apy: 最小 APY
             top_n: 返回前 N 個方案
             hedge_params: 對沖參數
+            use_v2_scoring: 是否使用V2評分排序（默認True）
         
         Returns:
             最佳方案列表
@@ -145,13 +304,14 @@ class LALSmartSearchV3:
             hedge_params = HedgeParamsV2(hedge_ratio=1.0, rebalance_frequency_days=7)
         
         print(f"\n{'='*80}")
-        print(f"🔍 LAL 智能搜尋服務 V3（整合 IL 計算）")
+        print(f"🔍 LAL 智能搜尋服務 V3（整合 V2 評分系統）")
         print(f"{'='*80}")
         print(f"代幣: {token}")
         print(f"資本: ${capital:,.0f}")
         print(f"風險偏好: {risk_tolerance}")
         print(f"對沖比率: {hedge_params.hedge_ratio * 100:.0f}%")
         print(f"再平衡頻率: {hedge_params.rebalance_frequency_days} 天")
+        print(f"使用V2評分: {'是' if use_v2_scoring else '否'}")
         print(f"{'='*80}\n")
         
         # 步驟 1: 戴維斯雙擊分析
@@ -365,10 +525,10 @@ class LALSmartSearchV3:
         
         print(f"✅ 完成 {len(opportunities)} 個配對方案（含 IL 分析）\n")
         
-        # 步驟 4: 智能優化和排序
-        print("🧠 步驟 4/6: 智能優化和排序...")
+        # 步驟 4: 智能優化和排序（整合V2評分）
+        print("🧠 步驟 4/6: 智能優化和排序（V1 + V2 評分）...")
         
-        # 風險偏好權重
+        # V1 評分：風險偏好權重
         risk_weights = {
             "low": {"net_apy": 0.25, "davis": 0.25, "tvl": 0.3, "roi": 0.1, "il_risk": 0.1},
             "medium": {"net_apy": 0.35, "davis": 0.25, "tvl": 0.2, "roi": 0.1, "il_risk": 0.1},
@@ -377,8 +537,9 @@ class LALSmartSearchV3:
         
         weights = risk_weights.get(risk_tolerance, risk_weights["medium"])
         
-        # 計算綜合評分
+        # 計算 V1 和 V2 評分
         for opp in opportunities:
+            # ========== V1 評分 ==========
             # 歸一化各項指標（0-100）
             norm_net_apy = min(100, opp["adjusted_net_apy"] * 2)  # 50% APY = 100 分
             norm_davis = opp["davis_score"]
@@ -389,8 +550,8 @@ class LALSmartSearchV3:
             il_risk_map = {"low": 100, "medium": 60, "high": 30}
             norm_il_risk = il_risk_map.get(opp["il_analysis"]["il_risk_level"], 60)
             
-            # 綜合評分
-            final_score = (
+            # V1 綜合評分
+            final_score_v1 = (
                 norm_net_apy * weights["net_apy"] +
                 norm_davis * weights["davis"] +
                 norm_tvl * weights["tvl"] +
@@ -398,12 +559,62 @@ class LALSmartSearchV3:
                 norm_il_risk * weights["il_risk"]
             )
             
-            opp["final_score"] = round(final_score, 2)
+            opp["final_score_v1"] = round(final_score_v1, 2)
+            
+            # ========== V2 評分 ==========
+            try:
+                # 提取代幣符號
+                token_a, token_b = opp["symbol"].split("-")
+                
+                # 豐富機會數據（添加 V2 所需的字段）
+                enriched_opp = self.scoring_engine_v2.enrich_opportunity_with_scores(
+                    opp,
+                    token_a,
+                    token_b,
+                    opp["protocol"]
+                )
+                
+                # 應用最低門檻
+                threshold_result = self.scoring_engine_v2.apply_minimum_thresholds(enriched_opp)
+                
+                if threshold_result["passed"]:
+                    # 計算 V2 綜合評分（使用平衡型權重）
+                    score_result_v2 = self.scoring_engine_v2.calculate_comprehensive_score(
+                        enriched_opp,
+                        risk_profile="balanced"
+                    )
+                    
+                    opp["final_score_v2"] = score_result_v2["final_score"]
+                    opp["scoring_v2"] = self._build_tooltip_data(enriched_opp, score_result_v2, token_a, token_b)
+                else:
+                    # 不通過門檻
+                    opp["final_score_v2"] = 0
+                    opp["scoring_v2"] = {
+                        "passed_threshold": False,
+                        "failed_reasons": threshold_result.get("failures", []),
+                        "total_score": 0,
+                        "grade": "F"
+                    }
+            except Exception as e:
+                print(f"⚠️  計算 V2 評分時發生錯誤 ({opp['symbol']}): {e}")
+                opp["final_score_v2"] = 0
+                opp["scoring_v2"] = {
+                    "passed_threshold": False,
+                    "error": str(e),
+                    "total_score": 0,
+                    "grade": "F"
+                }
+            
+            # 設置默認排序評分
+            if use_v2_scoring:
+                opp["final_score"] = opp["final_score_v2"]
+            else:
+                opp["final_score"] = opp["final_score_v1"]
         
-        # 排序
+        # 排序（根據選擇的評分系統）
         opportunities.sort(key=lambda x: x["final_score"], reverse=True)
         
-        print(f"✅ 評分完成\n")
+        print(f"✅ 評分完成（使用{'V2' if use_v2_scoring else 'V1'}評分排序）\n")
         
         # 步驟 5: 選出前 N 個方案
         print(f"🎯 步驟 5/6: 選出前 {top_n} 個最佳方案...")
@@ -412,20 +623,22 @@ class LALSmartSearchV3:
         
         # 步驟 6: 生成報告
         print("📋 步驟 6/6: 生成報告...")
-        self._print_report(top_opportunities, capital)
+        self._print_report(top_opportunities, capital, use_v2_scoring)
         
         return top_opportunities
     
-    def _print_report(self, opportunities: List[Dict], capital: float):
+    def _print_report(self, opportunities: List[Dict], capital: float, use_v2_scoring: bool):
         """打印報告"""
         print(f"\n{'='*80}")
-        print(f"📊 LAL 智能搜尋報告（考慮 IL 影響）")
+        print(f"📊 LAL 智能搜尋報告（V2 評分系統）")
         print(f"{'='*80}\n")
         
         for i, opp in enumerate(opportunities, 1):
             print(f"方案 #{i}: {opp['protocol']} - {opp['symbol']} ({opp['chain']})")
             print(f"{'─'*80}")
-            print(f"綜合評分: {opp['final_score']:.2f}/100")
+            print(f"V1 評分: {opp['final_score_v1']:.2f}/100")
+            print(f"V2 評分: {opp['final_score_v2']:.2f}/100 ({opp['scoring_v2'].get('grade', 'N/A')}級)")
+            print(f"排序依據: {'V2' if use_v2_scoring else 'V1'} 評分")
             print(f"TVL: ${opp['tvl']:,.0f}")
             print(f"戴維斯評分: {opp['davis_score']}/100 ({opp['davis_category']})")
             print()
@@ -438,6 +651,17 @@ class LALSmartSearchV3:
             print(f"  總 APY: {opp['total_apy']:.2f}%")
             print(f"  ✅ 調整後淨 APY: {opp['adjusted_net_apy']:.2f}%")
             print()
+            
+            if opp['scoring_v2'].get('passed_threshold', False):
+                print("V2 評分詳情:")
+                for dim in opp['scoring_v2']['dimensions']:
+                    print(f"  {dim['icon']} {dim['name']}: {dim['score']:.1f}/100 (權重{dim['weight']}%, 貢獻{dim['contribution']:.2f}分)")
+                print()
+            else:
+                print("V2 評分: 未通過最低門檻")
+                if 'failed_reasons' in opp['scoring_v2']:
+                    print(f"  失敗原因: {', '.join(opp['scoring_v2']['failed_reasons'])}")
+                print()
             
             print("IL 分析:")
             il = opp["il_analysis"]
@@ -467,6 +691,8 @@ class LALSmartSearchV3:
         if opportunities:
             best = opportunities[0]
             print(f"💡 最佳方案: {best['protocol']} - {best['symbol']}")
+            print(f"   V1 評分: {best['final_score_v1']:.2f}/100")
+            print(f"   V2 評分: {best['final_score_v2']:.2f}/100 ({best['scoring_v2'].get('grade', 'N/A')}級)")
             print(f"   調整後淨 APY: {best['adjusted_net_apy']:.2f}%")
             print(f"   預期年收益: ${best['adjusted_net_profit']:,.2f}")
             print(f"   IL 風險: {best['il_analysis']['il_risk_level']}")
@@ -478,9 +704,9 @@ class LALSmartSearchV3:
 if __name__ == "__main__":
     search_service = LALSmartSearchV3()
     
-    # 測試 1: 基礎搜尋（100% 對沖，每週再平衡）
+    # 測試: V2 評分系統
     print("\n" + "="*80)
-    print("測試 1: 基礎搜尋（100% 對沖，每週再平衡）")
+    print("測試: V2 評分系統整合")
     print("="*80)
     
     results = search_service.search(
@@ -490,37 +716,22 @@ if __name__ == "__main__":
         min_tvl=5_000_000,
         min_apy=20,
         top_n=3,
-        hedge_params=HedgeParams(hedge_ratio=1.0, rebalance_frequency_days=7)
+        hedge_params=HedgeParamsV2(hedge_ratio=1.0, rebalance_frequency_days=7),
+        use_v2_scoring=True  # 使用 V2 評分排序
     )
     
-    # 測試 2: 不同對沖策略比較
-    print("\n" + "="*80)
-    print("測試 2: 不同對沖策略比較")
-    print("="*80)
-    
-    hedge_strategies = [
-        ("無對沖", HedgeParams(hedge_ratio=0.0, rebalance_frequency_days=30)),
-        ("50% 對沖", HedgeParams(hedge_ratio=0.5, rebalance_frequency_days=7)),
-        ("100% 對沖（每週）", HedgeParams(hedge_ratio=1.0, rebalance_frequency_days=7)),
-    ]
-    
-    for strategy_name, hedge_params in hedge_strategies:
-        print(f"\n{strategy_name}:")
-        print("-" * 80)
-        results = search_service.search(
-            token="ETH",
-            capital=10000,
-            risk_tolerance="medium",
-            min_tvl=5_000_000,
-            min_apy=20,
-            top_n=1,
-            hedge_params=hedge_params
-        )
-        
-        if results:
-            best = results[0]
-            print(f"\n最佳方案: {best['symbol']}")
-            print(f"調整後淨 APY: {best['adjusted_net_apy']:.2f}%")
-            print(f"預期年收益: ${best['adjusted_net_profit']:,.2f}")
-            print(f"IL 影響: ${best['il_analysis']['il_impact_usd']:,.2f}")
+    # 打印 V2 評分詳情
+    if results:
+        print("\n" + "="*80)
+        print("V2 評分系統詳細報告")
+        print("="*80)
+        for i, result in enumerate(results, 1):
+            print(f"\n方案 #{i}: {result['symbol']}")
+            print(f"V2 評分: {result['final_score_v2']:.2f}/100")
+            if result['scoring_v2'].get('passed_threshold', False):
+                print("Tooltip 數據已生成 ✅")
+                print(f"評級: {result['scoring_v2']['grade']}")
+                print(f"風險控制貢獻: {result['scoring_v2']['summary']['risk_control_contribution']:.2f}分")
+            else:
+                print("未通過最低門檻 ❌")
 
