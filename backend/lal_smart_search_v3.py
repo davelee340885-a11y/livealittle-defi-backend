@@ -14,6 +14,7 @@ from delta_neutral_calculator import DeltaNeutralCalculator
 from il_calculator_v2 import ILCalculatorV2, HedgeParamsV2
 from pool_parser import PoolParser
 from pool_url_generator import generate_pool_url, generate_protocol_direct_link
+from blockchain_explorer import BlockchainExplorer
 
 
 class GasFeeEstimator:
@@ -115,6 +116,7 @@ class LALSmartSearchV3:
         self.gas_estimator = GasFeeEstimator()
         self.il_calculator = ILCalculatorV2()  # V2 計算器
         self.pool_parser = PoolParser()  # 池解析器
+        self.blockchain_explorer = BlockchainExplorer()  # 區塊鏈瀏覽器
     
     def search(
         self,
@@ -282,6 +284,16 @@ class LALSmartSearchV3:
                 chain=pool["chain"]
             )
             
+            # 生成區塊鏈瀏覽器鏈接
+            pool_address = pool.get("pool_address", "")
+            explorer_links = self.blockchain_explorer.generate_explorer_links(
+                chain=pool["chain"],
+                pool_address=pool_address if pool_address else None
+            )
+            
+            # 生成區塊鏈信息
+            blockchain_info = self.blockchain_explorer.generate_blockchain_info(pool["chain"])
+            
             opportunities.append({
                 "pool_id": pool["pool_id"],
                 "protocol": pool["protocol"],
@@ -289,6 +301,23 @@ class LALSmartSearchV3:
                 "symbol": pool["symbol"],
                 "external_url": external_url,  # DefiLlama 池頁面（主要連結）
                 "protocol_url": protocol_url,  # 協議直連（備用連結）
+                
+                # 新增:鏈接信息
+                "links": {
+                    "pool_url": external_url,
+                    "protocol_url": protocol_url,
+                    "explorer_url": explorer_links.get("pool_explorer_url"),
+                    "defillama_url": external_url,
+                    "add_liquidity_url": protocol_url,
+                },
+                
+                # 新增:地址信息
+                "addresses": {
+                    "pool_address": pool_address,
+                },
+                
+                # 新增:區塊鏈信息
+                "blockchain": blockchain_info,
                 "tvl": pool["tvl"],
                 "lp_apy": lp_apy,
                 
