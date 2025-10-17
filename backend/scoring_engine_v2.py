@@ -5,7 +5,7 @@ LAL評分引擎 V2
 
 from typing import Dict, List, Optional
 import math
-from liquidity_scorer import LiquidityScorer
+from liquidity_scorer_optimized import LiquidityScorerOptimized as LiquidityScorer
 from hedgeability_scorer import HedgeabilityScorer
 from protocol_security_scorer import ProtocolSecurityScorer
 
