@@ -8,7 +8,7 @@ from datetime import datetime
 import requests
 
 # 導入現有模組
-from davis_double_click_analyzer import DavisDoubleClickAnalyzer
+from davis_double_click_analyzer_v2 import DavisDoubleClickAnalyzerV2
 from unified_data_aggregator import UnifiedDataAggregator
 from delta_neutral_calculator import DeltaNeutralCalculator
 from il_calculator_v2 import ILCalculatorV2, HedgeParamsV2
@@ -109,7 +109,7 @@ class LALSmartSearchV3:
     """LAL 智能搜尋服務 V3（整合 IL 計算）"""
     
     def __init__(self):
-        self.davis_analyzer = DavisDoubleClickAnalyzer()
+        self.davis_analyzer = DavisDoubleClickAnalyzerV2()
         self.data_aggregator = UnifiedDataAggregator()
         self.dn_calculator = DeltaNeutralCalculator()
         self.gas_estimator = GasFeeEstimator()
