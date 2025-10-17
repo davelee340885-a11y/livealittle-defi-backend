@@ -69,11 +69,22 @@ class LPDataSource:
         raise NotImplementedError
 
 
-class DefiLlamaPoolSource(LPDataSource):
-    """DefiLlama 池數據源"""
+class DefiLlamaSource(LPDataSource):
+    """DefiLlama 數據源"""
     def __init__(self):
-        super().__init__("defillama")
-        self.api_url = "https://yields.llama.fi"
+        super().__init__("DefiLlama")
+        self.base_url = "https://yields.llama.fi"
+    
+    def _extract_fee_tier(self, pool_meta: str) -> float:
+        """從 poolMeta 提取 fee tier (如 '0.05%' -> 0.0005)"""
+        if not pool_meta:
+            return 0.0
+        try:
+            # 移除 '%' 並轉換為小數
+            fee_str = pool_meta.strip().replace('%', '')
+            return float(fee_str) / 100.0
+        except:
+            return 0.0
     
     async def fetch_pool_data(self, pool_id: str, chain: str = None) -> Optional[LPPoolData]:
         """從 DefiLlama 獲取池數據"""
@@ -99,7 +110,7 @@ class DefiLlamaPoolSource(LPDataSource):
                                 chain=latest.get('chain', 'unknown'),
                                 token0=latest.get('symbol', '').split('-')[0] if '-' in latest.get('symbol', '') else 'unknown',
                                 token1=latest.get('symbol', '').split('-')[1] if '-' in latest.get('symbol', '') else 'unknown',
-                                fee_tier=0.0,  # DefiLlama 不直接提供
+                                fee_tier=self._extract_fee_tier(latest.get('poolMeta', '')),
                                 tvl=float(latest.get('tvlUsd', 0)),
                                 volume_24h=0.0,  # 需要從其他端點獲取
                                 apy=float(latest.get('apy', 0)),
@@ -149,7 +160,7 @@ class DefiLlamaPoolSource(LPDataSource):
                                 chain=pool.get('chain', 'unknown'),
                                 token0=symbol.split('-')[0] if '-' in symbol else 'unknown',
                                 token1=symbol.split('-')[1] if '-' in symbol else 'unknown',
-                                fee_tier=0.0,
+                                fee_tier=self._extract_fee_tier(pool.get('poolMeta', '')),
                                 tvl=float(pool.get('tvlUsd', 0)),
                                 volume_24h=0.0,
                                 apy=float(pool.get('apy', 0)),
@@ -262,6 +273,16 @@ class GeckoTerminalSource(LPDataSource):
         super().__init__("geckoterminal")
         self.api_url = "https://api.geckoterminal.com/api/v2"
     
+    def _extract_fee_tier(self, pool_meta: str) -> float:
+        """從 poolMeta 提取 fee tier"""
+        if not pool_meta:
+            return 0.0
+        try:
+            fee_str = pool_meta.strip().replace('%', '')
+            return float(fee_str) / 100.0
+        except:
+            return 0.0
+    
     async def fetch_pool_data(self, pool_address: str, chain: str = "eth") -> Optional[LPPoolData]:
         """從 GeckoTerminal 獲取池數據"""
         try:
@@ -286,7 +307,7 @@ class GeckoTerminalSource(LPDataSource):
                                 chain=chain,
                                 token0=pool.get('base_token_symbol', 'unknown'),
                                 token1=pool.get('quote_token_symbol', 'unknown'),
-                                fee_tier=0.0,
+                                fee_tier=self._extract_fee_tier(pool.get('poolMeta', '')),
                                 tvl=float(pool.get('reserve_in_usd', 0)),
                                 volume_24h=float(pool.get('volume_usd', {}).get('h24', 0)),
                                 apy=0.0,  # GeckoTerminal 不直接提供 APY
