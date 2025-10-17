@@ -1,6 +1,9 @@
 """
-戴維斯雙擊分析引擎
-識別費用增長快於 TVL 增長的優質 LP 池
+池質量評分引擎（原戴維斯雙擊分析器）
+基於當前 APY、TVL 和穩定性評估 LP 池的質量
+
+注意：這是靜態質量評分，不是真正的戴維斯雙擊策略。
+真正的戴維斯雙擊需要追蹤 APY 和 TVL 的動態變化趨勢。
 """
 
 import requests
@@ -10,7 +13,7 @@ import time
 
 
 class DavisDoubleClickAnalyzer:
-    """戴維斯雙擊分析引擎"""
+    """池質量評分引擎（基於靜態指標）"""
     
     def __init__(self):
         self.defillama_base = "https://yields.llama.fi"
@@ -63,12 +66,15 @@ class DavisDoubleClickAnalyzer:
         stability_weight: float = 0.3
     ) -> Dict:
         """
-        計算戴維斯雙擊評分
+        計算池質量評分（基於當前靜態指標）
         
-        由於無法獲取歷史數據，我們使用以下指標：
-        1. APY 高低（高 APY 可能表示費用增長）
-        2. TVL 規模（適中的 TVL 可能表示增長空間）
-        3. 穩定性指標（APY 基礎部分 vs 獎勵部分）
+        評分維度：
+        1. APY 水平（40%）- 收益潛力
+        2. TVL 規模（30%）- 流動性和安全性
+        3. 穩定性（30%）- 基礎 APY 佔比
+        
+        注意：這是靜態評分，不追蹤動態變化。
+        未來版本將實現真正的戴維斯雙擊（APY增長 × TVL增長）。
         
         Args:
             pool: 池數據
@@ -85,33 +91,35 @@ class DavisDoubleClickAnalyzer:
         apy_base = pool.get("apyBase") or 0
         apy_reward = pool.get("apyReward") or 0
         
-        # 1. APY 評分（0-100）
-        # 高 APY 得分高，但過高可能不穩定
-        if apy < 5:
+        # 1. APY 評分（0-100）- 修正版：線性評分，不懲罰高 APY
+        if apy <= 0:
+            apy_score = 0
+        elif apy < 5:
             apy_score = apy * 10  # 0-50
         elif apy < 20:
             apy_score = 50 + (apy - 5) * 2.67  # 50-90
-        elif apy < 50:
-            apy_score = 90 + (apy - 20) * 0.33  # 90-100
+        elif apy < 100:
+            apy_score = 90 + (apy - 20) * 0.125  # 90-100
         else:
-            apy_score = max(70, 100 - (apy - 50) * 0.5)  # 過高扣分
+            # 超高 APY 保持滿分，不扣分
+            apy_score = 100
         
-        # 2. TVL 評分（0-100）
-        # 適中的 TVL 得分高（有增長空間但不太小）
+        # 2. TVL 評分（0-100）- 修正版：對數評分，不懲罰大 TVL
         tvl_millions = tvl / 1_000_000
-        if tvl_millions < 1:
-            tvl_score = 20  # 太小，風險高
+        if tvl_millions <= 0:
+            tvl_score = 0
+        elif tvl_millions < 1:
+            tvl_score = 30  # 小池風險較高
         elif tvl_millions < 10:
-            tvl_score = 40 + tvl_millions * 4  # 40-80
+            tvl_score = 30 + (tvl_millions - 1) * 5  # 30-75
         elif tvl_millions < 100:
-            tvl_score = 80 + (tvl_millions - 10) * 0.22  # 80-100
-        elif tvl_millions < 1000:
-            tvl_score = 90  # 理想範圍
+            tvl_score = 75 + (tvl_millions - 10) * 0.22  # 75-95
         else:
-            tvl_score = max(60, 90 - (tvl_millions - 1000) / 100)  # 過大增長空間小
+            # 大 TVL 保持高分，不扣分
+            tvl_score = min(100, 95 + (tvl_millions - 100) * 0.001)
         
         # 3. 穩定性評分（0-100）
-        # 基礎 APY 佔比高 = 更穩定
+        # 基礎 APY 佔比高 = 更穩定（費用收入而非代幣獎勵）
         if apy > 0:
             base_ratio = apy_base / apy
             stability_score = base_ratio * 100
@@ -128,17 +136,19 @@ class DavisDoubleClickAnalyzer:
         # 特殊加分
         bonus = 0
         
-        # 高 APY + 中等 TVL = 可能的戴維斯雙擊
-        if apy > 15 and 10 < tvl_millions < 500:
-            bonus += 10
+        # 高 APY + 大 TVL = 優質池
+        if apy > 15 and tvl_millions > 10:
+            bonus += 5
         
-        # 基礎 APY 高 = 費用收入好
-        if apy_base > 10:
+        # 超高基礎 APY = 費用收入極好
+        if apy_base > 20:
+            bonus += 10
+        elif apy_base > 10:
             bonus += 5
         
         # 穩定幣池 = 無常損失低
         symbol = pool.get("symbol", "").upper()
-        if any(stable in symbol for stable in ["USDC", "USDT", "DAI", "FRAX"]):
+        if any(stable in symbol for stable in ["USDC", "USDT", "DAI", "FRAX", "USDE"]):
             bonus += 5
         
         davis_score = min(100, davis_score + bonus)
@@ -176,7 +186,8 @@ class DavisDoubleClickAnalyzer:
                 "apy_reward": apy_reward,
                 "tvl": tvl,
                 "base_ratio": round(apy_base / apy * 100, 2) if apy > 0 else 0
-            }
+            },
+            "note": "這是基於當前狀態的靜態評分。未來版本將追蹤 APY 和 TVL 的動態變化，實現真正的戴維斯雙擊策略。"
         }
     
     def analyze_token_pools(
@@ -198,7 +209,7 @@ class DavisDoubleClickAnalyzer:
         Returns:
             分析結果列表
         """
-        print(f"\n🔍 戴維斯雙擊分析 - {token}")
+        print(f"\n🔍 池質量分析 - {token}")
         print(f"   最小 TVL: ${min_tvl:,.0f}")
         print(f"   最小 APY: {min_apy}%\n")
         
@@ -228,7 +239,7 @@ class DavisDoubleClickAnalyzer:
         if not token_pools:
             return []
         
-        # 計算戴維斯評分
+        # 計算質量評分
         results = []
         for pool in token_pools:
             davis_analysis = self.calculate_davis_score(pool)
@@ -248,7 +259,7 @@ class DavisDoubleClickAnalyzer:
                 "analysis": davis_analysis
             })
         
-        # 按戴維斯評分排序
+        # 按質量評分排序
         results.sort(key=lambda x: x["davis_score"], reverse=True)
         
         return results[:top_n]
@@ -268,7 +279,7 @@ class DavisDoubleClickAnalyzer:
         
         report = []
         report.append("\n" + "="*80)
-        report.append("戴維斯雙擊分析報告")
+        report.append("池質量分析報告")
         report.append("="*80 + "\n")
         
         for i, result in enumerate(analysis_results, 1):
@@ -276,15 +287,15 @@ class DavisDoubleClickAnalyzer:
             report.append(f"   Chain: {result['chain']}")
             report.append(f"   TVL: ${result['tvl']:,.0f}")
             report.append(f"   APY: {result['apy']:.2f}% (基礎: {result['apy_base']:.2f}%, 獎勵: {result['apy_reward']:.2f}%)")
-            report.append(f"   戴維斯評分: {result['davis_score']:.2f}/100 - {result['category']}")
+            report.append(f"   質量評分: {result['davis_score']:.2f}/100 - {result['category']}")
             report.append(f"   建議: {result['recommendation']}")
             
             # 評分細節
             breakdown = result['analysis']['breakdown']
             report.append(f"   評分細節:")
-            report.append(f"     - APY 評分: {breakdown['apy_score']:.2f}")
-            report.append(f"     - TVL 評分: {breakdown['tvl_score']:.2f}")
-            report.append(f"     - 穩定性評分: {breakdown['stability_score']:.2f}")
+            report.append(f"     - APY 評分: {breakdown['apy_score']:.2f}/100")
+            report.append(f"     - TVL 評分: {breakdown['tvl_score']:.2f}/100")
+            report.append(f"     - 穩定性評分: {breakdown['stability_score']:.2f}/100")
             if breakdown['bonus'] > 0:
                 report.append(f"     - 額外加分: +{breakdown['bonus']}")
             
@@ -296,7 +307,7 @@ class DavisDoubleClickAnalyzer:
 # ==================== 測試代碼 ====================
 
 if __name__ == "__main__":
-    print("🧪 測試戴維斯雙擊分析引擎\n")
+    print("🧪 測試池質量評分引擎\n")
     
     analyzer = DavisDoubleClickAnalyzer()
     
@@ -319,12 +330,12 @@ if __name__ == "__main__":
         
         # 顯示前 3 個最佳機會
         print("\n" + "="*80)
-        print("🏆 前 3 個最佳戴維斯雙擊機會")
+        print("🏆 前 3 個最高質量池")
         print("="*80 + "\n")
         
         for i, result in enumerate(results[:3], 1):
             print(f"{i}. {result['protocol']} - {result['symbol']}")
-            print(f"   戴維斯評分: {result['davis_score']:.2f}/100")
+            print(f"   質量評分: {result['davis_score']:.2f}/100")
             print(f"   APY: {result['apy']:.2f}%")
             print(f"   TVL: ${result['tvl']:,.0f}")
             print(f"   建議: {result['recommendation']}")
@@ -348,4 +359,5 @@ if __name__ == "__main__":
             print(f"{i}. {result['symbol']} - 評分: {result['davis_score']:.2f}")
     
     print("\n✅ 測試完成！")
+
 
