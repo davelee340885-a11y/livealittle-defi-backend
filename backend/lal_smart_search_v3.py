@@ -307,7 +307,7 @@ class LALSmartSearchV3:
                     "pool_url": external_url,
                     "protocol_url": protocol_url,
                     "explorer_url": explorer_links.get("pool_explorer_url"),
-                    "defillama_url": external_url,
+                    "defillama_url": f"https://defillama.com/protocol/{pool['protocol']}",  # DefiLlama 協議頁面
                     "add_liquidity_url": protocol_url,
                 },
                 
