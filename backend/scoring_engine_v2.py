@@ -140,9 +140,97 @@ class ScoringEngineV2:
         # 評級
         grade = self._get_overall_grade(final_score)
         
+        # 計算各維度的貢獻分數
+        contributions = {
+            "yield": round(yield_score * weights["yield"], 2),
+            "growth": round(growth_score * weights["growth"], 2),
+            "liquidity": round(liquidity_score * weights["liquidity"], 2),
+            "hedgeability": round(hedgeability_score * weights["hedgeability"], 2),
+            "security": round(security_score * weights["security"], 2),
+            "scale": round(scale_score * weights["scale"], 2)
+        }
+        
+        # 風險控制維度貢獻
+        risk_control_contribution = contributions["liquidity"] + contributions["hedgeability"] + contributions["security"]
+        
+        # 構建dimensions數組（前端tooltip需要）
+        dimensions = [
+            {
+                "name": "淨收益",
+                "icon": "💰",
+                "score": round(yield_score, 1),
+                "weight": int(weights["yield"] * 100),
+                "contribution": contributions["yield"],
+                "grade": self._get_component_grade(yield_score)
+            },
+            {
+                "name": "增長潛力",
+                "icon": "📈",
+                "score": round(growth_score, 1),
+                "weight": int(weights["growth"] * 100),
+                "contribution": contributions["growth"],
+                "grade": self._get_component_grade(growth_score)
+            },
+            {
+                "name": "流動性",
+                "icon": "💧",
+                "score": round(liquidity_score, 1),
+                "weight": int(weights["liquidity"] * 100),
+                "contribution": contributions["liquidity"],
+                "grade": self._get_component_grade(liquidity_score)
+            },
+            {
+                "name": "可對沖性",
+                "icon": "🛡️",
+                "score": round(hedgeability_score, 1),
+                "weight": int(weights["hedgeability"] * 100),
+                "contribution": contributions["hedgeability"],
+                "grade": self._get_component_grade(hedgeability_score)
+            },
+            {
+                "name": "協議安全",
+                "icon": "🔒",
+                "score": round(security_score, 1),
+                "weight": int(weights["security"] * 100),
+                "contribution": contributions["security"],
+                "grade": self._get_component_grade(security_score)
+            },
+            {
+                "name": "規模信任",
+                "icon": "📊",
+                "score": round(scale_score, 1),
+                "weight": int(weights["scale"] * 100),
+                "contribution": contributions["scale"],
+                "grade": self._get_component_grade(scale_score)
+            }
+        ]
+        
+        # 評估亮點
+        highlights = []
+        if liquidity_score >= 80:
+            highlights.append(f"流動性{self._get_component_grade(liquidity_score)}級")
+        if hedgeability_score >= 80:
+            highlights.append(f"可對沖性{self._get_component_grade(hedgeability_score)}級")
+        if security_score >= 80:
+            highlights.append(f"協議安全{self._get_component_grade(security_score)}級")
+        if yield_score >= 80:
+            highlights.append(f"高收益{self._get_component_grade(yield_score)}級")
+        if growth_score >= 80:
+            highlights.append(f"增長潛力{self._get_component_grade(growth_score)}級")
+        
         return {
-            "final_score": round(final_score, 2),
+            "total_score": round(final_score, 2),
             "grade": grade,
+            "passed_threshold": True,  # 如果到這裡說明已通過最低門檻
+            "dimensions": dimensions,
+            "summary": {
+                "risk_control_weight": int((weights["liquidity"] + weights["hedgeability"] + weights["security"]) * 100),
+                "risk_control_contribution": round(risk_control_contribution, 2)
+            },
+            "highlights": highlights,
+            "risk_profile": risk_profile,
+            # 保留舊格式以兼容
+            "final_score": round(final_score, 2),
             "component_scores": {
                 "yield": round(yield_score, 2),
                 "growth": round(growth_score, 2),
@@ -151,8 +239,7 @@ class ScoringEngineV2:
                 "security": round(security_score, 2),
                 "scale": round(scale_score, 2)
             },
-            "weights": weights,
-            "risk_profile": risk_profile
+            "weights": weights
         }
     
     def _calculate_yield_score(self, net_apy: float, roi: float) -> float:
@@ -187,6 +274,21 @@ class ScoringEngineV2:
         return score
     
 
+    
+    def _get_component_grade(self, score: float) -> str:
+        """
+        獲取單個維度的評級
+        """
+        if score >= 90:
+            return "A"
+        elif score >= 80:
+            return "B"
+        elif score >= 70:
+            return "C"
+        elif score >= 60:
+            return "D"
+        else:
+            return "F"
     
     def _get_overall_grade(self, score: float) -> str:
         """獲取總體評級"""
