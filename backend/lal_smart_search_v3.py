@@ -471,6 +471,7 @@ class LALSmartSearchV3:
                 "pool_type": profit_result.get("pool_type", "unknown"),
                 "weight_a": pool_info.weight_a,
                 "weight_b": pool_info.weight_b,
+                "fee_tier": pool_info.fee_tier if hasattr(pool_info, 'fee_tier') else pool.get('poolMeta', '').split('-')[-1] if '-' in pool.get('poolMeta', '') else None,
                 
                 # V2: Delta 資訊
                 "delta_a": profit_result.get("delta_a", 0),
