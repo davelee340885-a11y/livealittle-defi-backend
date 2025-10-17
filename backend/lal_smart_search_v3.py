@@ -373,16 +373,25 @@ class LALSmartSearchV3:
                 # 計算總收益
                 lp_apy = pool["apy"]
                 
-                # 估算 Gas 成本
-                eth_price = self.data_aggregator.get_token_price(token)
-                if eth_price:
-                    gas_cost = self.gas_estimator.estimate_total_gas_cost(
-                        chain=pool["chain"],
-                        eth_price=eth_price["price"]
-                    )
-                    annual_gas_cost = gas_cost["annual_cost_usd"]
-                else:
-                    annual_gas_cost = 200  # 默認值
+                # 估算 Gas 成本（根據鏈和再平衡頻率）
+                rebalances_per_year = 365 / hedge_params.rebalance_frequency_days
+                
+                # 不同鏈的單次再平衡成本（USD）
+                chain_gas_costs = {
+                    "Ethereum": 20.0,
+                    "Arbitrum": 0.2,
+                    "Optimism": 0.1,
+                    "Base": 0.1,
+                    "Polygon": 0.5,
+                    "BSC": 0.3,
+                    "Avalanche": 1.0,
+                }
+                
+                single_rebalance_cost = chain_gas_costs.get(pool["chain"], 1.0)
+                initial_setup_cost = single_rebalance_cost * 2  # 初始設置成本較高
+                
+                # 年化 Gas 成本 = 初始設置 + (單次成本 × 年度次數)
+                annual_gas_cost = initial_setup_cost + (single_rebalance_cost * rebalances_per_year)
                 
                 # 創建 V2 對冲參數
                 hedge_params_v2 = HedgeParamsV2(
@@ -488,6 +497,12 @@ class LALSmartSearchV3:
                 
                 # 成本
                 "gas_cost_annual": annual_gas_cost,
+                "gas_cost_details": {
+                    "rebalances_per_year": int(rebalances_per_year),
+                    "single_rebalance_cost": single_rebalance_cost,
+                    "initial_setup_cost": initial_setup_cost,
+                    "chain": pool["chain"]
+                },
                 
                 # 調整後的淨收益（考慮 IL）
                 "adjusted_net_apy": profit_result["net_apy"],
