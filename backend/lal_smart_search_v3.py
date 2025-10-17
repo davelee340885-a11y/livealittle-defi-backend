@@ -15,6 +15,7 @@ from il_calculator_v2 import ILCalculatorV2, HedgeParamsV2
 from pool_parser import PoolParser
 from pool_url_generator import generate_pool_url, generate_protocol_direct_link
 from blockchain_explorer import BlockchainExplorer
+from protocol_security_scorer import ProtocolSecurityScorer
 
 
 class GasFeeEstimator:
@@ -117,6 +118,7 @@ class LALSmartSearchV3:
         self.il_calculator = ILCalculatorV2()  # V2 計算器
         self.pool_parser = PoolParser()  # 池解析器
         self.blockchain_explorer = BlockchainExplorer()  # 區塊鏈瀏覽器
+        self.security_scorer = ProtocolSecurityScorer()  # 安全性評分器
     
     def search(
         self,
@@ -294,6 +296,20 @@ class LALSmartSearchV3:
             # 生成區塊鏈信息
             blockchain_info = self.blockchain_explorer.generate_blockchain_info(pool["chain"])
             
+            # 計算安全性評分
+            security_score_result = self.security_scorer.calculate_security_score(
+                protocol=pool["protocol"],
+                tvl=pool["tvl"],
+                maturity_days=365 * 3,  # 假設大部分協議運行 3 年，實際應從數據庫獲取
+                assets=[token_a, token_b]
+            )
+            
+            # 應用安全性調整係數到戴維斯評分
+            adjusted_davis_score = self.security_scorer.apply_safety_adjustment(
+                davis_score=pool["davis_score"],
+                security_grade=security_score_result["grade"]
+            )
+            
             opportunities.append({
                 "pool_id": pool["pool_id"],
                 "protocol": pool["protocol"],
@@ -381,7 +397,16 @@ class LALSmartSearchV3:
                 # 其他指標
                 "roi": roi,
                 "davis_score": pool["davis_score"],
+                "adjusted_davis_score": adjusted_davis_score,  # 調整後的戴維斯評分
                 "davis_category": pool["category"],
+                
+                # 安全性評分（新增）
+                "security": {
+                    "score": security_score_result["total_score"],
+                    "grade": security_score_result["grade"],
+                    "adjustment_factor": security_score_result["adjustment_factor"],
+                    "breakdown": security_score_result["breakdown"]
+                },
                 
                 # 戴維斯雙擊分析（新增）
                 "signal": pool.get("signal", "未知"),
@@ -410,7 +435,7 @@ class LALSmartSearchV3:
         for opp in opportunities:
             # 歸一化各項指標（0-100）
             norm_net_apy = min(100, opp["adjusted_net_apy"] * 2)  # 50% APY = 100 分
-            norm_davis = opp["davis_score"]
+            norm_davis = opp["adjusted_davis_score"]  # 使用調整後的戴維斯評分
             norm_tvl = min(100, (opp["tvl"] / 100_000_000) * 100)  # $100M = 100 分
             norm_roi = min(100, opp["roi"] / 10)  # 1000% ROI = 100 分
             
