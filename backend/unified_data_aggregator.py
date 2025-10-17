@@ -61,6 +61,49 @@ class UnifiedDataAggregator:
         self.last_request_time = {}
         self.min_request_interval = 1.0  # 最小請求間隔（秒）
     
+    def _extract_pool_address(self, pool_data: Dict, pool_meta: str = "") -> str:
+        """
+        增強的池地址提取邏輯
+        嘗試多個可能的字段來提高覆蓋率
+        
+        Args:
+            pool_data: 池數據字典
+            pool_meta: poolMeta 字段值
+        
+        Returns:
+            池地址字符串，如果找不到則返回空字符串
+        """
+        # 嘗試多個可能的字段
+        possible_fields = [
+            ('poolMeta', pool_meta),           # poolMeta 字段
+            ('pool', pool_data.get('pool', '')),  # pool ID 可能就是地址
+            ('address', pool_data.get('address', '')),  # 直接的地址字段
+            ('poolAddress', pool_data.get('poolAddress', '')),  # 池地址字段
+        ]
+        
+        for field_name, value in possible_fields:
+            if value and isinstance(value, str):
+                # 檢查是否為有效的以太坊地址 (0x + 40 個十六進位字符)
+                if value.startswith('0x') and len(value) == 42:
+                    # 驗證是否為合法的十六進位
+                    try:
+                        int(value[2:], 16)
+                        return value
+                    except ValueError:
+                        continue
+                
+                # Uniswap V3 的 pool ID 可能更長 (例如 66 個字符)
+                # 這是 Solana 或某些特殊協議的格式
+                if value.startswith('0x') and len(value) > 42:
+                    try:
+                        int(value[2:], 16)
+                        return value
+                    except ValueError:
+                        continue
+        
+        # 如果都沒找到，返回空字符串
+        return ""
+    
     def _rate_limit_wait(self, api_name: str):
         """Rate Limit 控制"""
         if api_name in self.last_request_time:
@@ -126,13 +169,9 @@ class UnifiedDataAggregator:
                 if apy <= 0 or apy > 10000:  # 過濾異常 APY
                     continue
                 
-                # 提取池地址 (poolMeta 通常包含實際的池地址)
+                # 提取池地址 (增強版 - 嘗試多個可能的字段)
                 pool_meta = pool.get("poolMeta", "")
-                pool_address = ""
-                if pool_meta and isinstance(pool_meta, str):
-                    # poolMeta 可能是地址或其他格式
-                    if pool_meta.startswith("0x") and len(pool_meta) == 42:
-                        pool_address = pool_meta
+                pool_address = self._extract_pool_address(pool, pool_meta)
                 
                 pools.append({
                     "pool_id": pool.get("pool", ""),
