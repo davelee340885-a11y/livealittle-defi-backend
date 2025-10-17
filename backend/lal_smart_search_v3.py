@@ -352,7 +352,15 @@ class LALSmartSearchV3:
                 # 其他指標
                 "roi": roi,
                 "davis_score": pool["davis_score"],
-                "davis_category": pool["category"]
+                "davis_category": pool["category"],
+                
+                # 戴維斯雙擊分析（新增）
+                "signal": pool.get("signal", "未知"),
+                "signal_strength": pool.get("signal_strength", "未知"),
+                "recommendation": pool.get("recommendation", "需要分析"),
+                "has_history": pool.get("has_history", False),
+                "growth_rates": pool.get("growth_rates", {}),
+                "analysis": pool.get("analysis", {})
             })
         
         print(f"✅ 完成 {len(opportunities)} 個配對方案（含 IL 分析）\n")
