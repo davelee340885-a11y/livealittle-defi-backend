@@ -577,24 +577,23 @@ class LALSmartSearchV3:
                 # 應用最低門檻
                 threshold_result = self.scoring_engine_v2.apply_minimum_thresholds(enriched_opp)
                 
-                if threshold_result["passed"]:
-                    # 計算 V2 綜合評分（使用平衡型權重）
-                    score_result_v2 = self.scoring_engine_v2.calculate_comprehensive_score(
-                        enriched_opp,
-                        risk_profile="balanced"
-                    )
-                    
-                    opp["final_score_v2"] = score_result_v2["final_score"]
-                    opp["scoring_v2"] = self._build_tooltip_data(enriched_opp, score_result_v2, token_a, token_b)
-                else:
-                    # 不通過門檻
+                # 無論是否通過門檻，都計算完整的評分數據
+                score_result_v2 = self.scoring_engine_v2.calculate_comprehensive_score(
+                    enriched_opp,
+                    risk_profile="balanced"
+                )
+                
+                # 如果未通過門檻，將passed_threshold設為False並添加失敗原因
+                if not threshold_result["passed"]:
+                    score_result_v2["passed_threshold"] = False
+                    score_result_v2["failed_reasons"] = threshold_result.get("failures", [])
+                    # 總分設為0（因為不推薦）
                     opp["final_score_v2"] = 0
-                    opp["scoring_v2"] = {
-                        "passed_threshold": False,
-                        "failed_reasons": threshold_result.get("failures", []),
-                        "total_score": 0,
-                        "grade": "F"
-                    }
+                else:
+                    opp["final_score_v2"] = score_result_v2["final_score"]
+                
+                # 構建完整的tooltip數據
+                opp["scoring_v2"] = score_result_v2
             except Exception as e:
                 print(f"⚠️  計算 V2 評分時發生錯誤 ({opp['symbol']}): {e}")
                 opp["final_score_v2"] = 0
