@@ -343,29 +343,30 @@ class DeltaNeutralCalculatorV2:
         
         elif pool_config.pool_type == PoolType.VOLATILE_STABLE:
             # 只對沖波動資產
+            # hedge_ratio 直接表示要對沖多少比例的波動資產持倉
             if pool_config.token_a.is_stable:
                 return HedgeStrategy(
                     hedge_token_a=False,
                     hedge_token_b=True,
                     hedge_ratio_a=0.0,
-                    hedge_ratio_b=delta_b * hedge_ratio
+                    hedge_ratio_b=hedge_ratio  # 修正: 直接使用對沖比率
                 )
             else:
                 return HedgeStrategy(
                     hedge_token_a=True,
                     hedge_token_b=False,
-                    hedge_ratio_a=delta_a * hedge_ratio,
+                    hedge_ratio_a=hedge_ratio,  # 修正: 直接使用對沖比率
                     hedge_ratio_b=0.0
                 )
         
         else:  # PoolType.VOLATILE_VOLATILE
             # 對沖兩個波動資產
-            # 策略: 對沖 Delta 較大的資產,或兩個都對沖
+            # hedge_ratio 表示要對沖多少比例的各自持倉
             return HedgeStrategy(
                 hedge_token_a=True,
                 hedge_token_b=True,
-                hedge_ratio_a=delta_a * hedge_ratio,
-                hedge_ratio_b=delta_b * hedge_ratio
+                hedge_ratio_a=hedge_ratio,  # 修正: 直接使用對沖比率
+                hedge_ratio_b=hedge_ratio   # 修正: 直接使用對沖比率
             )
     
     def calculate_delta_neutral_strategy(
